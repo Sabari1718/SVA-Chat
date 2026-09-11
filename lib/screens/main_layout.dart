@@ -15,6 +15,8 @@ import 'modules/chat_screen.dart';
 import 'modules/calendar_screen.dart';
 import 'modules/leave_screen.dart';
 import 'modules/payslip_screen.dart';
+import 'modules/employee_screen.dart';
+import 'modules/report_screen.dart';
 import 'widgets/session_logout_dialog.dart';
 
 class MainLayout extends StatefulWidget {
@@ -47,6 +49,14 @@ class _MainLayoutState extends State<MainLayout> {
         MaterialPageRoute(builder: (_) => const LeaveScreen()),
       );
     } else if (index == 6) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const EmployeeScreen()),
+      );
+    } else if (index == 7) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const ReportScreen()),
+      );
+    } else if (index == 8) {
       Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const PayslipScreen()),
       );
@@ -107,7 +117,7 @@ class _MainLayoutState extends State<MainLayout> {
                 ),
                 const SizedBox(height: 14),
 
-                // 2x2 Bento Quick Links
+                // 3x2 Bento Quick Links
                 Row(
                   children: [
                     Expanded(
@@ -132,6 +142,37 @@ class _MainLayoutState extends State<MainLayout> {
                         onTap: () {
                           Navigator.of(ctx).pop();
                           Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LeaveScreen()));
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildHubCard(
+                        title: 'Employees',
+                        subtitle: 'Directory & Admin',
+                        icon: Icons.people_alt_rounded,
+                        gradient: const LinearGradient(colors: [Color(0xFF6366F1), Color(0xFF4F46E5)]),
+                        onTap: () {
+                          Navigator.of(ctx).pop();
+                          Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EmployeeScreen()));
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildHubCard(
+                        title: 'Reports',
+                        subtitle: 'Activity & analytics',
+                        icon: Icons.bar_chart_rounded,
+                        gradient: const LinearGradient(colors: [Color(0xFFF97316), Color(0xFFEA580C)]),
+                        onTap: () {
+                          Navigator.of(ctx).pop();
+                          Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ReportScreen()));
                         },
                       ),
                     ),
@@ -561,7 +602,9 @@ class _MainLayoutState extends State<MainLayout> {
                   const Divider(height: 20, color: Color(0xFFF1F5F9)),
                   _buildDrawerTile(4, 'Projects', Icons.folder_rounded),
                   _buildDrawerTile(5, 'Leave & Permission', Icons.beach_access_rounded),
-                  _buildDrawerTile(6, 'Payslip Management', Icons.receipt_long_rounded),
+                  _buildDrawerTile(6, 'Employee Management', Icons.people_alt_rounded),
+                  _buildDrawerTile(7, 'Reports & Analytics', Icons.bar_chart_rounded),
+                  _buildDrawerTile(8, 'Payslip Management', Icons.receipt_long_rounded),
                 ],
               ),
             ),
