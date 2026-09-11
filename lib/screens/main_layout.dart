@@ -276,178 +276,224 @@ class _MainLayoutState extends State<MainLayout> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<ShiftTrackerBloc, ShiftTrackerState>(
-      builder: (context, trackerState) {
-        return Scaffold(
-          backgroundColor: const Color(0xFFF8FAFC),
-          appBar: AppBar(
-            backgroundColor: Colors.white,
-            elevation: 0,
-            surfaceTintColor: Colors.transparent,
-            leading: _currentIndex == 0
-                ? Builder(
-                    builder: (ctx) => IconButton(
-                      icon: const Icon(Icons.menu_rounded, color: AppColors.textPrimary, size: 22),
-                      onPressed: () => Scaffold.of(ctx).openDrawer(),
-                    ),
-                  )
-                : IconButton(
-                    icon: const Icon(Icons.arrow_back_rounded, color: AppColors.textPrimary, size: 22),
-                    tooltip: 'Back to Dashboard',
-                    onPressed: () => setState(() => _currentIndex = 0),
-                  ),
-            title: Row(
-              children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    gradient: AppColors.heroGradient,
-                    borderRadius: BorderRadius.circular(9),
-                  ),
-                  child: Icon(
-                    _currentIndex == 3
-                        ? Icons.calendar_month_rounded
-                        : (_currentIndex == 1
-                            ? Icons.task_alt_rounded
-                            : (_currentIndex == 2 ? Icons.forum_rounded : Icons.domain_rounded)),
-                    color: Colors.white,
-                    size: 18,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _currentIndex == 3
-                            ? 'Shift Calendar'
-                            : (_currentIndex == 1
-                                ? 'Task Management'
-                                : (_currentIndex == 2 ? 'Team Chat' : 'Employee Portal')),
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.textPrimary,
+    return BlocBuilder<AuthBloc, AuthState>(
+      builder: (context, authState) {
+        final user = authState is AuthenticatedState ? authState.user : null;
+        final isAdmin = user?.isAdmin ?? false;
+
+        return BlocBuilder<ShiftTrackerBloc, ShiftTrackerState>(
+          builder: (context, trackerState) {
+            return Scaffold(
+              backgroundColor: const Color(0xFFF8FAFC),
+              appBar: AppBar(
+                backgroundColor: Colors.white,
+                elevation: 0,
+                surfaceTintColor: Colors.transparent,
+                leading: _currentIndex == 0
+                    ? Builder(
+                        builder: (ctx) => IconButton(
+                          icon: const Icon(Icons.menu_rounded, color: AppColors.textPrimary, size: 22),
+                          onPressed: () => Scaffold.of(ctx).openDrawer(),
                         ),
-                        overflow: TextOverflow.ellipsis,
+                      )
+                    : IconButton(
+                        icon: const Icon(Icons.arrow_back_rounded, color: AppColors.textPrimary, size: 22),
+                        tooltip: 'Back to Dashboard',
+                        onPressed: () => setState(() => _currentIndex = 0),
                       ),
-                      Text(
-                        'SRIVA Enterprise',
-                        style: GoogleFonts.inter(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              // Live Pulse Shift Pill
-              Container(
-                margin: const EdgeInsets.symmetric(vertical: 10),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: trackerState.isWorking ? const Color(0xFFECFDF5) : const Color(0xFFFEF3C7),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: trackerState.isWorking ? const Color(0xFFA7F3D0) : const Color(0xFFFDE68A),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
+                title: Row(
                   children: [
                     Container(
-                      width: 6,
-                      height: 6,
+                      width: 32,
+                      height: 32,
                       decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: trackerState.isWorking ? const Color(0xFF10B981) : const Color(0xFFD97706),
+                        gradient: isAdmin ? const LinearGradient(colors: [Color(0xFF8B5CF6), Color(0xFF6D28D9)]) : AppColors.heroGradient,
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: Icon(
+                        _currentIndex == 3
+                            ? Icons.calendar_month_rounded
+                            : (_currentIndex == 1
+                                ? Icons.task_alt_rounded
+                                : (_currentIndex == 2
+                                    ? Icons.forum_rounded
+                                    : (isAdmin ? Icons.admin_panel_settings_rounded : Icons.domain_rounded))),
+                        color: Colors.white,
+                        size: 18,
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      TimeFormatter.formatHms(trackerState.normalWorkingSeconds),
-                      style: GoogleFonts.jetBrainsMono(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: trackerState.isWorking ? const Color(0xFF047857) : const Color(0xFF92400E),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _currentIndex == 3
+                                ? 'Shift Calendar'
+                                : (_currentIndex == 1
+                                    ? 'Task Management'
+                                    : (_currentIndex == 2
+                                        ? 'Team Chat'
+                                        : (isAdmin ? 'Admin Console' : 'Employee Portal'))),
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.textPrimary,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            isAdmin ? 'SRIVA System Administration' : 'SRIVA Enterprise',
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
+                actions: [
+                  if (isAdmin)
+                    Container(
+                      margin: const EdgeInsets.symmetric(vertical: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF5F3FF),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: const Color(0xFFDDD6FE)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Color(0xFF7C3AED),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Admin Mode',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF7C3AED),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    // Live Pulse Shift Pill
+                    Container(
+                      margin: const EdgeInsets.symmetric(vertical: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: trackerState.isWorking ? const Color(0xFFECFDF5) : const Color(0xFFFEF3C7),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: trackerState.isWorking ? const Color(0xFFA7F3D0) : const Color(0xFFFDE68A),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: trackerState.isWorking ? const Color(0xFF10B981) : const Color(0xFFD97706),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            TimeFormatter.formatHms(trackerState.normalWorkingSeconds),
+                            style: GoogleFonts.jetBrainsMono(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: trackerState.isWorking ? const Color(0xFF047857) : const Color(0xFF92400E),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  const SizedBox(width: 4),
+
+                  // One-Tap Play/Pause Quick Shift Button (only for employee)
+                  if (!isAdmin) ...[
+                    if (trackerState.isWorking)
+                      IconButton(
+                        tooltip: 'Pause Shift',
+                        icon: const Icon(Icons.pause_circle_filled_rounded, color: Color(0xFFF59E0B), size: 24),
+                        onPressed: () => context.read<ShiftTrackerBloc>().add(PauseShiftEvent()),
+                      )
+                    else
+                      IconButton(
+                        tooltip: 'Start / Resume Shift',
+                        icon: const Icon(Icons.play_circle_fill_rounded, color: Color(0xFF10B981), size: 24),
+                        onPressed: () {
+                          if (trackerState.isPaused) {
+                            context.read<ShiftTrackerBloc>().add(ResumeShiftEvent());
+                          } else {
+                            context.read<ShiftTrackerBloc>().add(StartShiftEvent());
+                          }
+                        },
+                      ),
+                  ],
+
+                  const SizedBox(width: 8),
+                ],
               ),
-              const SizedBox(width: 4),
-
-              // One-Tap Play/Pause Quick Shift Button
-              if (trackerState.isWorking)
-                IconButton(
-                  tooltip: 'Pause Shift',
-                  icon: const Icon(Icons.pause_circle_filled_rounded, color: Color(0xFFF59E0B), size: 24),
-                  onPressed: () => context.read<ShiftTrackerBloc>().add(PauseShiftEvent()),
-                )
-              else
-                IconButton(
-                  tooltip: 'Start / Resume Shift',
-                  icon: const Icon(Icons.play_circle_fill_rounded, color: Color(0xFF10B981), size: 24),
-                  onPressed: () {
-                    if (trackerState.isPaused) {
-                      context.read<ShiftTrackerBloc>().add(ResumeShiftEvent());
-                    } else {
-                      context.read<ShiftTrackerBloc>().add(StartShiftEvent());
-                    }
-                  },
+              drawer: _buildDrawer(context, isAdmin: isAdmin),
+              body: PopScope(
+                canPop: _currentIndex == 0,
+                onPopInvokedWithResult: (didPop, _) {
+                  if (didPop) return;
+                  if (_currentIndex != 0) {
+                    setState(() => _currentIndex = 0);
+                  }
+                },
+                child: IndexedStack(
+                  index: _currentIndex,
+                  children: _screens,
                 ),
-
-              const SizedBox(width: 8),
-            ],
-          ),
-          drawer: _buildDrawer(context),
-          body: PopScope(
-            canPop: _currentIndex == 0,
-            onPopInvokedWithResult: (didPop, _) {
-              if (didPop) return;
-              if (_currentIndex != 0) {
-                setState(() => _currentIndex = 0);
-              }
-            },
-            child: IndexedStack(
-              index: _currentIndex,
-              children: _screens,
-            ),
-          ),
-          bottomNavigationBar: Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: const Border(top: BorderSide(color: Color(0xFFE2E8F0))),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 16,
-                  offset: const Offset(0, -4),
-                ),
-              ],
-            ),
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _buildNavItem(0, Icons.grid_view_rounded, 'Home'),
-                    _buildNavItem(1, Icons.task_alt_rounded, 'Tasks'),
-                    _buildNavItem(2, Icons.forum_rounded, 'Chat', badge: '3'),
-                    _buildNavItem(3, Icons.calendar_today_rounded, 'Calendar'),
-                    _buildMoreNavItem(),
+              ),
+              bottomNavigationBar: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: const Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 16,
+                      offset: const Offset(0, -4),
+                    ),
                   ],
                 ),
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _buildNavItem(0, Icons.grid_view_rounded, 'Home'),
+                        _buildNavItem(1, Icons.task_alt_rounded, 'Tasks'),
+                        _buildNavItem(2, Icons.forum_rounded, 'Chat', badge: '3'),
+                        _buildNavItem(3, Icons.calendar_today_rounded, 'Calendar'),
+                        _buildMoreNavItem(),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
@@ -543,7 +589,7 @@ class _MainLayoutState extends State<MainLayout> {
     );
   }
 
-  Widget _buildDrawer(BuildContext context) {
+  Widget _buildDrawer(BuildContext context, {bool isAdmin = false}) {
     return Drawer(
       backgroundColor: Colors.white,
       child: SafeArea(
@@ -552,8 +598,8 @@ class _MainLayoutState extends State<MainLayout> {
             // Drawer Header
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: const BoxDecoration(
-                gradient: AppColors.heroGradient,
+              decoration: BoxDecoration(
+                gradient: isAdmin ? const LinearGradient(colors: [Color(0xFF0F172A), Color(0xFF2E1065)]) : AppColors.heroGradient,
               ),
               child: Row(
                 children: [
@@ -564,7 +610,7 @@ class _MainLayoutState extends State<MainLayout> {
                       color: Colors.white.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.domain_rounded, color: Colors.white, size: 24),
+                    child: Icon(isAdmin ? Icons.admin_panel_settings_rounded : Icons.domain_rounded, color: Colors.white, size: 24),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -572,7 +618,7 @@ class _MainLayoutState extends State<MainLayout> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Employee Portal',
+                          isAdmin ? 'Admin Console' : 'Employee Portal',
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 17,
                             fontWeight: FontWeight.w800,
@@ -580,7 +626,7 @@ class _MainLayoutState extends State<MainLayout> {
                           ),
                         ),
                         Text(
-                          'SRIVA Enterprise Groups',
+                          isAdmin ? 'SRIVA System Admin' : 'SRIVA Enterprise Groups',
                           style: GoogleFonts.inter(fontSize: 11, color: Colors.white70),
                         ),
                       ],

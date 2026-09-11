@@ -46,6 +46,8 @@ class UserModel extends Equatable {
     );
   }
 
+  bool get isAdmin => role.toLowerCase() == 'admin';
+
   static const defaultUser = UserModel(
     id: 'emp-11',
     name: 'Sabarishwaran',
