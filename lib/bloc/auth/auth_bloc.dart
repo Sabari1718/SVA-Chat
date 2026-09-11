@@ -1,10 +1,15 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../models/user_model.dart';
+import '../../repositories/auth_repository.dart';
 import 'auth_event.dart';
 import 'auth_state.dart';
 
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
-  AuthBloc() : super(const AuthScreenState(screenType: AuthScreenType.methodSelection)) {
+  final AuthRepository _authRepository;
+
+  AuthBloc({AuthRepository? authRepository})
+      : _authRepository = authRepository ?? AuthRepository(),
+        super(const AuthScreenState(screenType: AuthScreenType.methodSelection)) {
     on<AuthSwitchToMethodSelection>((event, emit) {
       emit(const AuthScreenState(screenType: AuthScreenType.methodSelection));
     });
@@ -17,14 +22,12 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       emit(const AuthScreenState(screenType: AuthScreenType.qrLogin));
     });
 
+    // Real API Login: POST /api/v1/auth/login
     on<AuthManualLoginRequested>((event, emit) async {
       emit(const AuthScreenState(
         screenType: AuthScreenType.manualLogin,
         isLoading: true,
       ));
-
-      // Simulate network authentication
-      await Future.delayed(const Duration(milliseconds: 900));
 
       if (event.email.trim().isEmpty || event.password.trim().isEmpty) {
         emit(const AuthScreenState(
@@ -35,26 +38,29 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         return;
       }
 
-      // Successful login
-      emit(AuthenticatedState(
-        user: UserModel(
-          id: 'EMP-9824',
-          name: event.email.split('@').first.replaceRange(0, 1, event.email[0].toUpperCase()),
+      try {
+        final user = await _authRepository.loginWithCredentials(
           email: event.email,
-          role: 'Employee',
-          avatarInitials: event.email[0].toUpperCase(),
-        ),
-      ));
+          password: event.password,
+        );
+
+        emit(AuthenticatedState(user: user));
+      } catch (e) {
+        final cleanMsg = e.toString().replaceFirst('Exception: ', '');
+        emit(AuthScreenState(
+          screenType: AuthScreenType.manualLogin,
+          errorMessage: cleanMsg,
+          isLoading: false,
+        ));
+      }
     });
 
+    // Real API QR Status Check: GET /api/v1/auth/qr/status/{qrToken}
     on<AuthQrLoginRequested>((event, emit) async {
       emit(const AuthScreenState(
         screenType: AuthScreenType.qrLogin,
         isLoading: true,
       ));
-
-      // Simulate QR token validation
-      await Future.delayed(const Duration(milliseconds: 900));
 
       if (event.token.trim().isEmpty) {
         emit(const AuthScreenState(
@@ -65,7 +71,37 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         return;
       }
 
-      emit(const AuthenticatedState(user: UserModel.defaultUser));
+      try {
+        final qrData = await _authRepository.checkQrStatus(event.token);
+        final status = (qrData['status'] as String? ?? 'UNKNOWN').toUpperCase();
+
+        if (status == 'EXPIRED') {
+          emit(const AuthScreenState(
+            screenType: AuthScreenType.qrLogin,
+            errorMessage: 'QR status: EXPIRED. Please refresh the QR code on the desktop portal.',
+            isLoading: false,
+          ));
+        } else if (status == 'SUCCESS' && qrData.containsKey('user')) {
+          final user = UserModel.fromJson(
+            qrData['user'] as Map<String, dynamic>,
+            token: qrData['token'] as String?,
+          );
+          emit(AuthenticatedState(user: user));
+        } else {
+          emit(AuthScreenState(
+            screenType: AuthScreenType.qrLogin,
+            errorMessage: 'QR Status: $status. Waiting for authorization.',
+            isLoading: false,
+          ));
+        }
+      } catch (e) {
+        final cleanMsg = e.toString().replaceFirst('Exception: ', '');
+        emit(AuthScreenState(
+          screenType: AuthScreenType.qrLogin,
+          errorMessage: cleanMsg,
+          isLoading: false,
+        ));
+      }
     });
 
     on<AuthLogoutRequested>((event, emit) {
