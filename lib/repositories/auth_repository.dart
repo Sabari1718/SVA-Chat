@@ -79,4 +79,38 @@ class AuthRepository {
       throw Exception('Network error: Unable to verify QR ($e)');
     }
   }
+
+  /// POST /api/v1/auth/logout
+  Future<void> logout(String token) async {
+    try {
+      final url = Uri.parse(ApiConstants.logout);
+      await _client.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+    } catch (e) {
+      // Ignore errors on logout as we will clear local state anyway
+    }
+  }
+
+  /// POST /api/v1/employee/session/login
+  Future<void> triggerSessionLogin(String token) async {
+    try {
+      final url = Uri.parse(ApiConstants.sessionLogin);
+      await _client.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+    } catch (e) {
+      // Non-blocking, ignore errors if it fails or if already active
+    }
+  }
 }

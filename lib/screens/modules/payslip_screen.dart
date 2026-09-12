@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/file_upload_helper.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../bloc/auth/auth_bloc.dart';
+import '../../bloc/auth/auth_state.dart';
+import '../../repositories/admin_repository.dart';
 
 class PayslipScreen extends StatefulWidget {
   const PayslipScreen({super.key});
@@ -11,6 +15,9 @@ class PayslipScreen extends StatefulWidget {
 }
 
 class _PayslipScreenState extends State<PayslipScreen> {
+  final AdminRepository _adminRepo = AdminRepository();
+  bool _isLoading = false;
+
   int _selectedOption = 0; // 0: Option 1 - Single Page Payslip, 1: Option 2 - Monthly Separate Payslips
 
   // Employee & Period Selection
@@ -31,24 +38,43 @@ class _PayslipScreenState extends State<PayslipScreen> {
   ];
   final _payYearController = TextEditingController(text: '2026');
 
-  // Earnings Controllers
-  final _basicSalaryController = TextEditingController(text: '45000');
-  final _hraController = TextEditingController(text: '15000');
-  final _conveyanceController = TextEditingController(text: '3000');
-  final _medicalController = TextEditingController(text: '2500');
-  final _specialController = TextEditingController(text: '5000');
+  // Earnings Controllers (default 0)
+  final _basicSalaryController = TextEditingController(text: '0');
+  final _hraController = TextEditingController(text: '0');
+  final _conveyanceController = TextEditingController(text: '0');
+  final _medicalController = TextEditingController(text: '0');
+  final _specialController = TextEditingController(text: '0');
   final _otherAllowanceController = TextEditingController(text: '0');
   final _bonusController = TextEditingController(text: '0');
   final _overtimeController = TextEditingController(text: '0');
 
-  // Deductions Controllers
-  final _pfController = TextEditingController(text: '3600');
-  final _esiController = TextEditingController(text: '750');
-  final _profTaxController = TextEditingController(text: '200');
-  final _tdsController = TextEditingController(text: '550');
+  // Earnings Enabled Toggles (Default OFF)
+  bool _basicSalaryEnabled = false;
+  bool _hraEnabled = false;
+  bool _conveyanceEnabled = false;
+  bool _medicalEnabled = false;
+  bool _specialEnabled = false;
+  bool _otherAllowanceEnabled = false;
+  bool _bonusEnabled = false;
+  bool _overtimeEnabled = false;
+
+  // Deductions Controllers (default 0)
+  final _pfController = TextEditingController(text: '0');
+  final _esiController = TextEditingController(text: '0');
+  final _profTaxController = TextEditingController(text: '0');
+  final _tdsController = TextEditingController(text: '0');
   final _loanController = TextEditingController(text: '0');
   final _advanceController = TextEditingController(text: '0');
   final _otherDeductionController = TextEditingController(text: '0');
+
+  // Deductions Enabled Toggles (Default OFF)
+  bool _pfEnabled = false;
+  bool _esiEnabled = false;
+  bool _profTaxEnabled = false;
+  bool _tdsEnabled = false;
+  bool _loanEnabled = false;
+  bool _advanceEnabled = false;
+  bool _otherDeductionEnabled = false;
 
   // Payment Info
   String _paymentMode = 'Bank Transfer';
@@ -73,6 +99,44 @@ class _PayslipScreenState extends State<PayslipScreen> {
 
   // Generated Payslips Storage
   final List<Map<String, dynamic>> _generatedPayslips = [];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadData();
+    });
+  }
+
+  String _getToken() {
+    final authState = context.read<AuthBloc>().state;
+    if (authState is AuthenticatedState) {
+      return authState.user.token ?? '';
+    }
+    return '';
+  }
+
+  Future<void> _loadData() async {
+    final token = _getToken();
+    if (token.isEmpty) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final payslips = await _adminRepo.getPayslips(token);
+      if (mounted) {
+        setState(() {
+          _generatedPayslips.clear();
+          _generatedPayslips.addAll(payslips);
+        });
+      }
+    } catch (e) {
+      debugPrint('[PayslipScreen] _loadData error: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -111,24 +175,28 @@ class _PayslipScreenState extends State<PayslipScreen> {
   int _parseVal(TextEditingController c) => int.tryParse(c.text.trim()) ?? 0;
 
   int get _totalGrossEarnings {
-    return _parseVal(_basicSalaryController) +
-        _parseVal(_hraController) +
-        _parseVal(_conveyanceController) +
-        _parseVal(_medicalController) +
-        _parseVal(_specialController) +
-        _parseVal(_otherAllowanceController) +
-        _parseVal(_bonusController) +
-        _parseVal(_overtimeController);
+    int total = 0;
+    if (_basicSalaryEnabled) total += _parseVal(_basicSalaryController);
+    if (_hraEnabled) total += _parseVal(_hraController);
+    if (_conveyanceEnabled) total += _parseVal(_conveyanceController);
+    if (_medicalEnabled) total += _parseVal(_medicalController);
+    if (_specialEnabled) total += _parseVal(_specialController);
+    if (_otherAllowanceEnabled) total += _parseVal(_otherAllowanceController);
+    if (_bonusEnabled) total += _parseVal(_bonusController);
+    if (_overtimeEnabled) total += _parseVal(_overtimeController);
+    return total;
   }
 
   int get _totalDeductions {
-    return _parseVal(_pfController) +
-        _parseVal(_esiController) +
-        _parseVal(_profTaxController) +
-        _parseVal(_tdsController) +
-        _parseVal(_loanController) +
-        _parseVal(_advanceController) +
-        _parseVal(_otherDeductionController);
+    int total = 0;
+    if (_pfEnabled) total += _parseVal(_pfController);
+    if (_esiEnabled) total += _parseVal(_esiController);
+    if (_profTaxEnabled) total += _parseVal(_profTaxController);
+    if (_tdsEnabled) total += _parseVal(_tdsController);
+    if (_loanEnabled) total += _parseVal(_loanController);
+    if (_advanceEnabled) total += _parseVal(_advanceController);
+    if (_otherDeductionEnabled) total += _parseVal(_otherDeductionController);
+    return total;
   }
 
   int get _netSalary {
@@ -143,6 +211,23 @@ class _PayslipScreenState extends State<PayslipScreen> {
 
   void _resetForm() {
     setState(() {
+      _basicSalaryEnabled = false;
+      _hraEnabled = false;
+      _conveyanceEnabled = false;
+      _medicalEnabled = false;
+      _specialEnabled = false;
+      _otherAllowanceEnabled = false;
+      _bonusEnabled = false;
+      _overtimeEnabled = false;
+
+      _pfEnabled = false;
+      _esiEnabled = false;
+      _profTaxEnabled = false;
+      _tdsEnabled = false;
+      _loanEnabled = false;
+      _advanceEnabled = false;
+      _otherDeductionEnabled = false;
+
       _basicSalaryController.text = '0';
       _hraController.text = '0';
       _conveyanceController.text = '0';
@@ -164,7 +249,7 @@ class _PayslipScreenState extends State<PayslipScreen> {
     );
   }
 
-  void _generatePayslip() {
+  Future<void> _generatePayslip() async {
     if (_selectedEmployee == '-- Choose Employee --') {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select an employee')),
@@ -172,8 +257,10 @@ class _PayslipScreenState extends State<PayslipScreen> {
       return;
     }
 
+    final token = _getToken();
+    if (token.isEmpty) return;
+
     final newPayslip = {
-      'id': 'PAY-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}',
       'employee': _selectedEmployee,
       'monthYear': '$_payMonth ${_payYearController.text}',
       'gross': _totalGrossEarnings,
@@ -183,17 +270,32 @@ class _PayslipScreenState extends State<PayslipScreen> {
       'date': _paymentDateController.text,
     };
 
-    setState(() {
-      _generatedPayslips.insert(0, newPayslip);
-      _selectedOption = 1; // Switch to Option 2 list view
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Payslip generated and saved successfully!'),
-        backgroundColor: Color(0xFF0F172A),
-      ),
-    );
+    setState(() => _isLoading = true);
+    try {
+      await _adminRepo.createPayslip(token: token, data: newPayslip);
+      await _loadData(); // Refresh list after creation
+      if (mounted) {
+        setState(() {
+          _selectedOption = 1; // Switch to Option 2 list view
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Payslip generated and saved successfully!'),
+            backgroundColor: Color(0xFF0F172A),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   void _showCompanyDetailsDialog() {
@@ -569,12 +671,21 @@ class _PayslipScreenState extends State<PayslipScreen> {
         surfaceTintColor: Colors.transparent,
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1100),
-              child: Column(
+        child: Column(
+          children: [
+            if (_isLoading)
+              const LinearProgressIndicator(
+                minHeight: 2,
+                color: Color(0xFF4F46E5),
+                backgroundColor: Color(0xFFEEF2FF),
+              ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1100),
+                    child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Header Bar matching Screenshot 2
@@ -1162,7 +1273,10 @@ class _PayslipScreenState extends State<PayslipScreen> {
                 ],
               ),
             ),
-          ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1288,14 +1402,69 @@ class _PayslipScreenState extends State<PayslipScreen> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                _buildAmountRow('Basic Salary (₹)', _basicSalaryController),
-                _buildAmountRow('HRA (₹)', _hraController),
-                _buildAmountRow('Conveyance Allowance (₹)', _conveyanceController),
-                _buildAmountRow('Medical Allowance (₹)', _medicalController),
-                _buildAmountRow('Special Allowance (₹)', _specialController),
-                _buildAmountRow('Other Allowance (₹)', _otherAllowanceController),
-                _buildAmountRow('Bonus (₹)', _bonusController),
-                _buildAmountRow('Overtime Pay (₹)', _overtimeController),
+                _buildFieldPair(
+                  _buildAmountField(
+                    label: 'Basic Salary (₹)',
+                    controller: _basicSalaryController,
+                    isEnabled: _basicSalaryEnabled,
+                    onToggle: (v) {
+                      setState(() {
+                        _basicSalaryEnabled = v;
+                        if (v && (_basicSalaryController.text.trim().isEmpty || _basicSalaryController.text.trim() == '0')) {
+                          _basicSalaryController.text = '30000';
+                        }
+                      });
+                    },
+                  ),
+                  _buildAmountField(
+                    label: 'HRA (₹)',
+                    controller: _hraController,
+                    isEnabled: _hraEnabled,
+                    onToggle: (v) => setState(() => _hraEnabled = v),
+                  ),
+                ),
+                _buildFieldPair(
+                  _buildAmountField(
+                    label: 'Conveyance Allowance (₹)',
+                    controller: _conveyanceController,
+                    isEnabled: _conveyanceEnabled,
+                    onToggle: (v) => setState(() => _conveyanceEnabled = v),
+                  ),
+                  _buildAmountField(
+                    label: 'Medical Allowance (₹)',
+                    controller: _medicalController,
+                    isEnabled: _medicalEnabled,
+                    onToggle: (v) => setState(() => _medicalEnabled = v),
+                  ),
+                ),
+                _buildFieldPair(
+                  _buildAmountField(
+                    label: 'Special Allowance (₹)',
+                    controller: _specialController,
+                    isEnabled: _specialEnabled,
+                    onToggle: (v) => setState(() => _specialEnabled = v),
+                  ),
+                  _buildAmountField(
+                    label: 'Other Allowance (₹)',
+                    controller: _otherAllowanceController,
+                    isEnabled: _otherAllowanceEnabled,
+                    onToggle: (v) => setState(() => _otherAllowanceEnabled = v),
+                  ),
+                ),
+                _buildFieldPair(
+                  _buildAmountField(
+                    label: 'Bonus (₹)',
+                    controller: _bonusController,
+                    isEnabled: _bonusEnabled,
+                    onToggle: (v) => setState(() => _bonusEnabled = v),
+                  ),
+                  _buildAmountField(
+                    label: 'Overtime Pay (₹)',
+                    controller: _overtimeController,
+                    isEnabled: _overtimeEnabled,
+                    onToggle: (v) => setState(() => _overtimeEnabled = v),
+                  ),
+                ),
                 const Divider(height: 24, color: Color(0xFFF1F5F9)),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1358,14 +1527,71 @@ class _PayslipScreenState extends State<PayslipScreen> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                _buildAmountRow('PF (Provident Fund) (₹)', _pfController),
-                _buildAmountRow('ESI (Insurance) (₹)', _esiController),
-                _buildAmountRow('Professional Tax (₹)', _profTaxController),
-                _buildAmountRow('TDS (Income Tax) (₹)', _tdsController),
-                _buildAmountRow('Loan Deduction (₹)', _loanController),
-                _buildAmountRow('Advance Deduction (₹)', _advanceController),
-                _buildAmountRow('Other Deduction (₹)', _otherDeductionController),
-                const SizedBox(height: 48), // align heights
+                _buildFieldPair(
+                  _buildAmountField(
+                    label: 'PF (Provident Fund) (₹)',
+                    controller: _pfController,
+                    isEnabled: _pfEnabled,
+                    onToggle: (v) {
+                      setState(() {
+                        _pfEnabled = v;
+                        if (v && (_pfController.text.trim().isEmpty || _pfController.text.trim() == '0')) {
+                          _pfController.text = '3600';
+                        }
+                      });
+                    },
+                  ),
+                  _buildAmountField(
+                    label: 'ESI (Insurance) (₹)',
+                    controller: _esiController,
+                    isEnabled: _esiEnabled,
+                    onToggle: (v) => setState(() => _esiEnabled = v),
+                  ),
+                ),
+                _buildFieldPair(
+                  _buildAmountField(
+                    label: 'Professional Tax (₹)',
+                    controller: _profTaxController,
+                    isEnabled: _profTaxEnabled,
+                    onToggle: (v) {
+                      setState(() {
+                        _profTaxEnabled = v;
+                        if (v && (_profTaxController.text.trim().isEmpty || _profTaxController.text.trim() == '0')) {
+                          _profTaxController.text = '200';
+                        }
+                      });
+                    },
+                  ),
+                  _buildAmountField(
+                    label: 'TDS (Income Tax) (₹)',
+                    controller: _tdsController,
+                    isEnabled: _tdsEnabled,
+                    onToggle: (v) => setState(() => _tdsEnabled = v),
+                  ),
+                ),
+                _buildFieldPair(
+                  _buildAmountField(
+                    label: 'Loan Deduction (₹)',
+                    controller: _loanController,
+                    isEnabled: _loanEnabled,
+                    onToggle: (v) => setState(() => _loanEnabled = v),
+                  ),
+                  _buildAmountField(
+                    label: 'Advance Deduction (₹)',
+                    controller: _advanceController,
+                    isEnabled: _advanceEnabled,
+                    onToggle: (v) => setState(() => _advanceEnabled = v),
+                  ),
+                ),
+                _buildFieldPair(
+                  _buildAmountField(
+                    label: 'Other Deduction (₹)',
+                    controller: _otherDeductionController,
+                    isEnabled: _otherDeductionEnabled,
+                    onToggle: (v) => setState(() => _otherDeductionEnabled = v),
+                  ),
+                  null,
+                ),
                 const Divider(height: 24, color: Color(0xFFF1F5F9)),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1392,33 +1618,98 @@ class _PayslipScreenState extends State<PayslipScreen> {
     );
   }
 
-  Widget _buildAmountRow(String label, TextEditingController controller) {
+  Widget _buildFieldPair(Widget left, Widget? right) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Text(
-              label,
-              style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF475569)),
-            ),
-          ),
-          SizedBox(
-            width: 90,
-            child: TextField(
-              controller: controller,
-              keyboardType: TextInputType.number,
-              textAlign: TextAlign.end,
-              onChanged: (_) => setState(() {}),
-              style: GoogleFonts.jetBrainsMono(fontSize: 12, fontWeight: FontWeight.w600),
-              decoration: const InputDecoration(
-                isDense: true,
-                contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              ),
-            ),
-          ),
+          Expanded(child: left),
+          const SizedBox(width: 12),
+          Expanded(child: right ?? const SizedBox.shrink()),
         ],
       ),
+    );
+  }
+
+  Widget _buildAmountField({
+    required String label,
+    required TextEditingController controller,
+    required bool isEnabled,
+    required ValueChanged<bool> onToggle,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: isEnabled ? const Color(0xFF1E293B) : const Color(0xFF64748B),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Transform.scale(
+              scale: 0.72,
+              child: Switch(
+                value: isEnabled,
+                onChanged: onToggle,
+                activeThumbColor: Colors.white,
+                activeTrackColor: const Color(0xFF22C55E),
+                inactiveThumbColor: Colors.white,
+                inactiveTrackColor: const Color(0xFFE2E8F0),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          enabled: isEnabled,
+          onChanged: (_) => setState(() {}),
+          style: GoogleFonts.jetBrainsMono(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: isEnabled ? const Color(0xFF0F172A) : const Color(0xFF94A3B8),
+          ),
+          decoration: InputDecoration(
+            isDense: true,
+            hintText: '0',
+            filled: true,
+            fillColor: isEnabled ? Colors.white : const Color(0xFFF8FAFC),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(
+                color: isEnabled ? const Color(0xFFCBD5E1) : const Color(0xFFE2E8F0),
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(
+                color: isEnabled ? const Color(0xFFCBD5E1) : const Color(0xFFE2E8F0),
+              ),
+            ),
+            disabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Color(0xFF10B981), width: 1.5),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

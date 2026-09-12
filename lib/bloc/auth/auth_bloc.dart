@@ -44,6 +44,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           password: event.password,
         );
 
+        if (!user.isAdmin && user.token != null) {
+          await _authRepository.triggerSessionLogin(user.token!);
+        }
         emit(AuthenticatedState(user: user));
       } catch (e) {
         final cleanMsg = e.toString().replaceFirst('Exception: ', '');
@@ -86,6 +89,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
             qrData['user'] as Map<String, dynamic>,
             token: qrData['token'] as String?,
           );
+          if (!user.isAdmin && user.token != null) {
+            await _authRepository.triggerSessionLogin(user.token!);
+          }
           emit(AuthenticatedState(user: user));
         } else {
           emit(AuthScreenState(
@@ -104,7 +110,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       }
     });
 
-    on<AuthLogoutRequested>((event, emit) {
+    on<AuthLogoutRequested>((event, emit) async {
+      final currentState = state;
+      if (currentState is AuthenticatedState) {
+        final token = currentState.user.token ?? '';
+        if (token.isNotEmpty) {
+          await _authRepository.logout(token);
+        }
+      }
       emit(const AuthScreenState(screenType: AuthScreenType.methodSelection));
     });
   }

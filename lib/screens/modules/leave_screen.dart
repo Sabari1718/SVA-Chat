@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../bloc/auth/auth_bloc.dart';
 import '../../bloc/auth/auth_state.dart';
 import '../../core/theme/app_colors.dart';
+import '../../repositories/admin_repository.dart';
 
 class LeaveScreen extends StatefulWidget {
   const LeaveScreen({super.key});
@@ -13,90 +14,316 @@ class LeaveScreen extends StatefulWidget {
 }
 
 class _LeaveScreenState extends State<LeaveScreen> {
+  final AdminRepository _adminRepo = AdminRepository();
+  bool _isLoading = false;
+
   // Top Level Mode: 0 = Admin Approval Portal, 1 = My Applications
   int _topTab = 0;
 
-  // Admin Portal Filters
+  // Admin Portal Filters (Screenshots 3 & 4)
+  List<String> _employeeNames = ['All Employees'];
   String _selectedEmpFilter = 'All Employees';
   String _selectedTypeFilter = 'All Types';
   String _selectedStatusFilter = 'All Statuses';
+  DateTime? _fromDate;
+  DateTime? _toDate;
 
-  // Sample Admin Requests matching Screenshot 5
-  final List<Map<String, dynamic>> _adminRequests = [
-    {
-      'id': 'LV-00001',
-      'employeeName': 'Sri Hari',
-      'employeeRole': 'Full Stack Developer',
-      'employeeAvatar': 'S',
-      'avatarColor': const Color(0xFF06B6D4),
-      'requestType': 'CASUAL LEAVE',
-      'dates': '14/08/2026 → 15/08/2026',
-      'duration': '2 Day(s)',
-      'reason': 'independence Day and Sunday',
-      'status': 'APPROVED',
-      'adminRemarks': 'Approved by Owner',
-    },
-    {
-      'id': 'LV-00002',
-      'employeeName': 'Sabarishwaran',
-      'employeeRole': 'App Developer',
-      'employeeAvatar': 'S',
-      'avatarColor': const Color(0xFF3B82F6),
-      'requestType': 'WORK FROM HOME',
-      'dates': '18/09/2026 → 19/09/2026',
-      'duration': '2 Day(s)',
-      'reason': 'Project sprint deployment',
-      'status': 'PENDING',
-      'adminRemarks': '',
-    },
-    {
-      'id': 'LV-00003',
-      'employeeName': 'Kannan',
-      'employeeRole': 'App web developer',
-      'employeeAvatar': 'K',
-      'avatarColor': const Color(0xFFEF4444),
-      'requestType': 'PERMISSION',
-      'dates': '12/09/2026 (03:00 PM - 05:00 PM)',
-      'duration': '2 Hours',
-      'reason': 'Medical consultation',
-      'status': 'PENDING',
-      'adminRemarks': '',
-    },
-  ];
+  // Live Admin Requests
+  List<Map<String, dynamic>> _adminRequests = [];
+
+  // Employee Apply Form Dates
+  DateTime? _applyFromDate;
+  DateTime? _applyToDate;
+  DateTime? _permissionDate;
 
   // Employee Forms & State
   int _requestTab = 0; // 0: Leave, 1: Permission, 2: Work From Home
   String _leaveType = 'Casual Leave';
   final List<String> _leaveTypes = ['Casual Leave', 'Sick Leave', 'Privilege Leave', 'Compensatory Off'];
   final _leaveReasonController = TextEditingController();
+  
+  final _permissionFromTimeController = TextEditingController();
+  final _permissionToTimeController = TextEditingController();
   final _permissionReasonController = TextEditingController();
+  
+  String _wfhDurationType = 'Full Day';
+  final List<String> _wfhDurationTypes = ['Full Day', 'Half Day'];
+  String _wfhSession = 'First Half (Morning)';
+  final List<String> _wfhSessions = ['First Half (Morning)', 'Second Half (Afternoon)'];
   final _wfhLocationController = TextEditingController();
   final _wfhReasonController = TextEditingController();
 
   // Employee Submitted Requests
-  final List<Map<String, dynamic>> _myRequests = [
-    {
-      'id': 'LV-00002',
-      'type': 'Work From Home',
-      'dateTime': '18/09/2026 → 19/09/2026',
-      'duration': '2 Day(s)',
-      'detail': 'Project sprint deployment',
-      'status': 'Pending',
-    },
-  ];
+  List<Map<String, dynamic>> _myRequests = [];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadData();
+    });
+  }
 
   @override
   void dispose() {
     _leaveReasonController.dispose();
+    _permissionFromTimeController.dispose();
+    _permissionToTimeController.dispose();
     _permissionReasonController.dispose();
     _wfhLocationController.dispose();
     _wfhReasonController.dispose();
     super.dispose();
   }
 
-  void _showEditStatusModal(Map<String, dynamic> req, int index) {
-    String currentStatus = req['status'] as String;
-    final remarksController = TextEditingController(text: req['adminRemarks'] as String? ?? '');
+  String _getToken() {
+    final authState = context.read<AuthBloc>().state;
+    if (authState is AuthenticatedState) {
+      return authState.user.token ?? '';
+    }
+    return '';
+  }
+
+  String _mapRequestTypeToApi(String type) {
+    switch (type) {
+      case 'Leave Only':
+        return 'leave';
+      case 'Permission Only':
+        return 'permission';
+      case 'Work From Home Only':
+        return 'work_from_home';
+      default:
+        return 'all';
+    }
+  }
+
+  String _mapStatusToApi(String status) {
+    switch (status) {
+      case 'Pending':
+        return 'pending';
+      case 'Approved':
+        return 'approved';
+      case 'Rejected':
+        return 'rejected';
+      case 'Cancelled':
+        return 'cancelled';
+      default:
+        return 'all';
+    }
+  }
+
+  Map<String, dynamic> _normalizeRequest(Map<String, dynamic> item, Set<String> empNames) {
+    final empName = (item['employeeName'] as String?)?.trim() ?? 'Employee';
+    empNames.add(empName);
+
+    final reqType = (item['requestType'] as String? ?? 'leave').toLowerCase();
+    final lType = (item['leaveType'] as String? ?? 'Casual Leave').trim();
+
+    String displayType;
+    if (reqType == 'permission') {
+      displayType = 'PERMISSION';
+    } else if (reqType == 'work_from_home') {
+      displayType = 'WORK FROM HOME';
+    } else {
+      displayType = lType.toUpperCase();
+    }
+
+    DateTime? startDt;
+    DateTime? endDt;
+    if (reqType == 'permission') {
+      startDt = _parseDate(item['permissionDate'] ?? item['fromDate']);
+      endDt = startDt;
+    } else {
+      startDt = _parseDate(item['fromDate']);
+      endDt = _parseDate(item['toDate']) ?? startDt;
+    }
+
+    String datesStr;
+    if (reqType == 'permission') {
+      final pDate = item['permissionDate'] ?? item['fromDate'] ?? '';
+      final fTime = item['fromTime'] ?? '';
+      final tTime = item['toTime'] ?? '';
+      if (fTime.isNotEmpty || tTime.isNotEmpty) {
+        datesStr = '$pDate ($fTime - $tTime)';
+      } else {
+        datesStr = pDate.toString();
+      }
+    } else {
+      final fDate = item['fromDate'] ?? '';
+      final tDate = item['toDate'] ?? '';
+      datesStr = (tDate.isNotEmpty && tDate != fDate) ? '$fDate → $tDate' : fDate.toString();
+    }
+
+    String durationStr;
+    if (reqType == 'permission') {
+      final mins = item['durationMinutes'];
+      if (mins != null && mins is num && mins > 0) {
+        final hrs = (mins / 60).toStringAsFixed(mins % 60 == 0 ? 0 : 1);
+        durationStr = '$hrs Hour(s)';
+      } else {
+        durationStr = 'Permission';
+      }
+    } else {
+      final days = item['totalDays'];
+      if (days != null && days is num && days > 0) {
+        durationStr = '$days Day(s)';
+      } else {
+        durationStr = '1 Day(s)';
+      }
+    }
+
+    final reqId = item['requestId'] ?? item['id'] ?? 'LV-00000';
+    final statusStr = (item['status'] as String? ?? 'pending').toUpperCase();
+
+    // Map for "My Requests" specific UI keys
+    String typeForMyReq;
+    if (reqType == 'permission') {
+      typeForMyReq = 'Permission';
+    } else if (reqType == 'work_from_home') {
+      typeForMyReq = 'Work From Home';
+    } else {
+      typeForMyReq = lType;
+    }
+    
+    // Convert status to Title Case for My Requests UI
+    String myReqStatus = statusStr.toLowerCase();
+    if (myReqStatus.isNotEmpty) {
+      myReqStatus = myReqStatus[0].toUpperCase() + myReqStatus.substring(1);
+    }
+
+    return {
+      'id': reqId,
+      'dbId': item['id'],
+      'requestId': reqId,
+      'employeeName': empName,
+      'employeeRole': item['employeeDepartment'] ?? item['employeeRole'] ?? 'Employee',
+      'employeeAvatar': empName.isNotEmpty ? empName[0].toUpperCase() : 'E',
+      'avatarColor': _getAvatarColor(empName),
+      'requestType': displayType,
+      'rawRequestType': reqType,
+      'leaveType': lType,
+      'fromDate': item['fromDate'] as String?,
+      'toDate': item['toDate'] as String?,
+      'permissionDate': item['permissionDate'] as String?,
+      'fromTime': item['fromTime'] as String?,
+      'toTime': item['toTime'] as String?,
+      'workLocation': item['workLocation'] as String?,
+      'durationMinutes': item['durationMinutes'],
+      'totalDays': item['totalDays'],
+      'startDate': startDt,
+      'endDate': endDt,
+      'dates': datesStr,
+      'duration': durationStr,
+      'reason': item['reason'] as String? ?? '',
+      'status': statusStr,
+      'adminRemarks': item['rejectionReason'] as String? ?? '',
+      'raw': item,
+      
+      // Keys specifically used by `_myRequests` list view:
+      'type': typeForMyReq,
+      'dateTime': datesStr,
+      'detail': item['reason'] as String? ?? '',
+      'myReqStatus': myReqStatus, 
+    };
+  }
+
+  Future<void> _loadData() async {
+    final token = _getToken();
+    if (token.isEmpty) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final results = await Future.wait([
+        _adminRepo.getAdminLeaveRequests(
+          token: token,
+          requestType: _mapRequestTypeToApi(_selectedTypeFilter),
+          status: _mapStatusToApi(_selectedStatusFilter),
+        ),
+        _adminRepo.getEmployees(token),
+        _adminRepo.getMyLeaveRequests(token),
+      ]);
+
+      final rawRequests = results[0];
+      final rawEmployees = results[1];
+      final rawMyRequests = results[2];
+
+      // Build employee names list
+      final Set<String> empNames = {'All Employees'};
+      for (final emp in rawEmployees) {
+        final name = emp['name'] as String?;
+        if (name != null && name.trim().isNotEmpty) {
+          empNames.add(name.trim());
+        }
+      }
+
+      final normalizedRequests = <Map<String, dynamic>>[];
+      for (final item in rawRequests) {
+        normalizedRequests.add(_normalizeRequest(item, empNames));
+      }
+
+      final normalizedMyRequests = <Map<String, dynamic>>[];
+      for (final item in rawMyRequests) {
+        normalizedMyRequests.add(_normalizeRequest(item, empNames));
+      }
+
+      setState(() {
+        _employeeNames = empNames.toList();
+        _adminRequests = normalizedRequests;
+        _myRequests = normalizedMyRequests;
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('[LeaveScreen] _loadData error: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Color _getAvatarColor(String name) {
+    final colors = [
+      const Color(0xFF06B6D4),
+      const Color(0xFF3B82F6),
+      const Color(0xFFEF4444),
+      const Color(0xFF8B5CF6),
+      const Color(0xFF10B981),
+      const Color(0xFFF59E0B),
+    ];
+    if (name.isEmpty) return colors[0];
+    return colors[name.codeUnitAt(0) % colors.length];
+  }
+
+  String _formatDateForApi(DateTime dt) {
+    return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+  }
+
+  DateTime? _parseDate(dynamic val) {
+    if (val == null) return null;
+    if (val is DateTime) return val;
+    try {
+      return DateTime.parse(val.toString());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _showEditRequestModal(Map<String, dynamic> req) {
+    String currentStatus = (req['status'] as String? ?? 'PENDING').toUpperCase();
+    final rawType = (req['rawRequestType'] as String? ?? 'leave').toLowerCase();
+
+    final reasonController = TextEditingController(text: req['reason'] as String? ?? '');
+    final fromTimeController = TextEditingController(text: req['fromTime'] as String? ?? '02:00 PM');
+    final toTimeController = TextEditingController(text: req['toTime'] as String? ?? '04:00 PM');
+    final locationController = TextEditingController(text: req['workLocation'] as String? ?? 'Home');
+
+    String leaveTypeVal = req['leaveType'] as String? ?? 'Casual Leave';
+    if (!_leaveTypes.contains(leaveTypeVal)) {
+      leaveTypeVal = _leaveTypes.first;
+    }
+
+    DateTime? editFromDate = req['startDate'] as DateTime? ?? _parseDate(req['fromDate'] ?? req['permissionDate']) ?? DateTime.now();
+    DateTime? editToDate = req['endDate'] as DateTime? ?? _parseDate(req['toDate'] ?? req['permissionDate']) ?? editFromDate;
+    DateTime? editPermissionDate = _parseDate(req['permissionDate'] ?? req['fromDate']) ?? DateTime.now();
+
+    bool isSaving = false;
 
     showModalBottomSheet(
       context: context,
@@ -116,133 +343,400 @@ class _LeaveScreenState extends State<LeaveScreen> {
                   top: 20,
                   bottom: MediaQuery.of(context).viewInsets.bottom + 20,
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 36,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFCBD5E1),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Action: Review Request',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                            Text(
-                              '${req['id']} • ${req['employeeName']}',
-                              style: GoogleFonts.inter(fontSize: 12, color: AppColors.textSecondary),
-                            ),
-                          ],
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close_rounded, size: 20),
-                          onPressed: () => Navigator.of(ctx).pop(),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Status Radio Pills: APPROVED, PENDING, REJECTED, CANCELLED
-                    Text(
-                      'Select Status *',
-                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        _buildStatusChoiceChip('APPROVED', const Color(0xFF10B981), const Color(0xFFECFDF5), currentStatus, (val) {
-                          setModalState(() => currentStatus = val);
-                        }),
-                        _buildStatusChoiceChip('PENDING', const Color(0xFFF59E0B), const Color(0xFFFFFBEB), currentStatus, (val) {
-                          setModalState(() => currentStatus = val);
-                        }),
-                        _buildStatusChoiceChip('REJECTED', const Color(0xFFEF4444), const Color(0xFFFEF2F2), currentStatus, (val) {
-                          setModalState(() => currentStatus = val);
-                        }),
-                        _buildStatusChoiceChip('CANCELLED', const Color(0xFF64748B), const Color(0xFFF1F5F9), currentStatus, (val) {
-                          setModalState(() => currentStatus = val);
-                        }),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Optional Remarks
-                    Text(
-                      'Admin Remarks (Optional)',
-                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                    ),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: remarksController,
-                      style: GoogleFonts.inter(fontSize: 13),
-                      decoration: InputDecoration(
-                        hintText: 'e.g. Approved for weekend duty, or specify reason...',
-                        hintStyle: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF94A3B8)),
-                        filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Save Button
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          setState(() {
-                            _adminRequests[index]['status'] = currentStatus;
-                            _adminRequests[index]['adminRemarks'] = remarksController.text.trim();
-                          });
-                          Navigator.of(ctx).pop();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Request ${req['id']} updated to $currentStatus'),
-                              backgroundColor: const Color(0xFF0F172A),
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF4F46E5),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        child: Text(
-                          'Update & Save Decision',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 36,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFCBD5E1),
+                            borderRadius: BorderRadius.circular(2),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Edit Request: ${req['requestId'] ?? req['id']}',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${req['employeeName']} • ${req['employeeRole']}',
+                                  style: GoogleFonts.inter(fontSize: 11, color: AppColors.textSecondary),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, size: 20),
+                            onPressed: () => Navigator.of(ctx).pop(),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // 1. Status Selection Chips
+                      Text(
+                        'Select Status *',
+                        style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _buildStatusChoiceChip('APPROVED', const Color(0xFF10B981), const Color(0xFFECFDF5), currentStatus, (val) {
+                            setModalState(() => currentStatus = val);
+                          }),
+                          _buildStatusChoiceChip('PENDING', const Color(0xFFF59E0B), const Color(0xFFFFFBEB), currentStatus, (val) {
+                            setModalState(() => currentStatus = val);
+                          }),
+                          _buildStatusChoiceChip('REJECTED', const Color(0xFFEF4444), const Color(0xFFFEF2F2), currentStatus, (val) {
+                            setModalState(() => currentStatus = val);
+                          }),
+                          _buildStatusChoiceChip('CANCELLED', const Color(0xFF64748B), const Color(0xFFF1F5F9), currentStatus, (val) {
+                            setModalState(() => currentStatus = val);
+                          }),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+
+                      // 2. Dynamic fields based on rawType
+                      if (rawType == 'permission') ...[
+                        Text(
+                          'Permission Date *',
+                          style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                        ),
+                        const SizedBox(height: 6),
+                        _buildDatePickerField(
+                          date: editPermissionDate,
+                          hint: 'dd-mm-yyyy',
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: editPermissionDate ?? DateTime.now(),
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime(2030),
+                            );
+                            if (picked != null) {
+                              setModalState(() => editPermissionDate = picked);
+                            }
+                          },
+                          onClear: () {},
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'From Time *',
+                                    style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  TextField(
+                                    controller: fromTimeController,
+                                    style: GoogleFonts.inter(fontSize: 12),
+                                    decoration: InputDecoration(
+                                      hintText: '02:00 PM',
+                                      filled: true,
+                                      fillColor: const Color(0xFFF8FAFC),
+                                      isDense: true,
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'To Time *',
+                                    style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  TextField(
+                                    controller: toTimeController,
+                                    style: GoogleFonts.inter(fontSize: 12),
+                                    decoration: InputDecoration(
+                                      hintText: '04:00 PM',
+                                      filled: true,
+                                      fillColor: const Color(0xFFF8FAFC),
+                                      isDense: true,
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ] else ...[
+                        if (rawType == 'leave') ...[
+                          Text(
+                            'Leave Type *',
+                            style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                          ),
+                          const SizedBox(height: 6),
+                          _buildDropdown(
+                            value: leaveTypeVal,
+                            items: _leaveTypes,
+                            onChanged: (val) {
+                              if (val != null) {
+                                setModalState(() => leaveTypeVal = val);
+                              }
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                        ] else if (rawType == 'work_from_home') ...[
+                          Text(
+                            'Work Location *',
+                            style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                          ),
+                          const SizedBox(height: 6),
+                          TextField(
+                            controller: locationController,
+                            style: GoogleFonts.inter(fontSize: 12),
+                            decoration: InputDecoration(
+                              hintText: 'e.g. Home, Chennai',
+                              filled: true,
+                              fillColor: const Color(0xFFF8FAFC),
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+
+                        // From Date & To Date Pickers
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'From Date *',
+                                    style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  _buildDatePickerField(
+                                    date: editFromDate,
+                                    hint: 'dd-mm-yyyy',
+                                    onTap: () async {
+                                      final picked = await showDatePicker(
+                                        context: context,
+                                        initialDate: editFromDate ?? DateTime.now(),
+                                        firstDate: DateTime(2020),
+                                        lastDate: DateTime(2030),
+                                      );
+                                      if (picked != null) {
+                                        setModalState(() {
+                                          editFromDate = picked;
+                                          if (editToDate != null && editToDate!.isBefore(editFromDate!)) {
+                                            editToDate = editFromDate;
+                                          }
+                                        });
+                                      }
+                                    },
+                                    onClear: () {},
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'To Date *',
+                                    style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  _buildDatePickerField(
+                                    date: editToDate,
+                                    hint: 'dd-mm-yyyy',
+                                    onTap: () async {
+                                      final picked = await showDatePicker(
+                                        context: context,
+                                        initialDate: editToDate ?? editFromDate ?? DateTime.now(),
+                                        firstDate: editFromDate ?? DateTime(2020),
+                                        lastDate: DateTime(2030),
+                                      );
+                                      if (picked != null) {
+                                        setModalState(() => editToDate = picked);
+                                      }
+                                    },
+                                    onClear: () {},
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+
+                      const SizedBox(height: 12),
+                      Text(
+                        'Reason *',
+                        style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                      ),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: reasonController,
+                        maxLines: 2,
+                        style: GoogleFonts.inter(fontSize: 12),
+                        decoration: InputDecoration(
+                          hintText: 'Enter reason...',
+                          filled: true,
+                          fillColor: const Color(0xFFF8FAFC),
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Actions: [ Cancel ] [ Save Changes ]
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: isSaving ? null : () => Navigator.of(ctx).pop(),
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Color(0xFFCBD5E1)),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              child: Text(
+                                'Cancel',
+                                style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: isSaving
+                                  ? null
+                                  : () async {
+                                      final token = _getToken();
+                                      if (token.isEmpty) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('Error: Not authenticated')),
+                                        );
+                                        return;
+                                      }
+
+                                      setModalState(() => isSaving = true);
+
+                                      final reqId = req['requestId'] ?? req['id'];
+                                      final fromStr = editFromDate != null ? _formatDateForApi(editFromDate!) : '';
+                                      final toStr = editToDate != null ? _formatDateForApi(editToDate!) : fromStr;
+                                      final pDateStr = editPermissionDate != null ? _formatDateForApi(editPermissionDate!) : '';
+
+                                      final payload = <String, dynamic>{
+                                        "status": currentStatus.toLowerCase(),
+                                        "reason": reasonController.text.trim(),
+                                        "fromDate": rawType == 'permission' ? pDateStr : fromStr,
+                                        "toDate": rawType == 'permission' ? pDateStr : toStr,
+                                        "permissionDate": rawType == 'permission' ? pDateStr : '',
+                                        "fromTime": fromTimeController.text.trim(),
+                                        "toTime": toTimeController.text.trim(),
+                                        "leaveType": leaveTypeVal,
+                                        if (rawType == 'work_from_home')
+                                          "workLocation": locationController.text.trim(),
+                                      };
+
+                                      final messenger = ScaffoldMessenger.of(context);
+                                      try {
+                                        await _adminRepo.updateLeaveRequest(
+                                          token: token,
+                                          requestId: reqId.toString(),
+                                          data: payload,
+                                        );
+
+                                        if (ctx.mounted) Navigator.of(ctx).pop();
+                                        if (mounted) {
+                                          messenger.showSnackBar(
+                                            SnackBar(
+                                              content: Text('Request $reqId updated successfully.'),
+                                              backgroundColor: const Color(0xFF059669),
+                                              behavior: SnackBarBehavior.floating,
+                                            ),
+                                          );
+                                          _loadData();
+                                        }
+                                      } catch (e) {
+                                        setModalState(() => isSaving = false);
+                                        if (mounted) {
+                                          messenger.showSnackBar(
+                                            SnackBar(
+                                              content: Text('Failed to update: $e'),
+                                              backgroundColor: const Color(0xFFDC2626),
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF4F46E5),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              child: isSaving
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                    )
+                                  : Text(
+                                      'Save Changes',
+                                      style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
+                                    ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -250,6 +744,86 @@ class _LeaveScreenState extends State<LeaveScreen> {
         );
       },
     );
+  }
+
+  Future<void> _quickUpdateStatus(Map<String, dynamic> req, String newStatus) async {
+    final token = _getToken();
+    if (token.isEmpty) return;
+
+    final reqId = req['requestId'] ?? req['id'];
+
+    if (newStatus == 'cancelled' || newStatus == 'rejected') {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(
+            newStatus == 'cancelled' ? 'Cancel Request?' : 'Reject Request?',
+            style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, fontSize: 16),
+          ),
+          content: Text(
+            'Are you sure you want to mark request $reqId as ${newStatus.toUpperCase()}?',
+            style: GoogleFonts.inter(fontSize: 13),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Back'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFDC2626),
+              ),
+              child: Text(
+                'Yes, ${newStatus.toUpperCase()}',
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+
+    try {
+      final payload = <String, dynamic>{
+        "status": newStatus.toLowerCase(),
+        "reason": req['reason'] ?? '',
+        "fromDate": req['fromDate'] ?? '',
+        "toDate": req['toDate'] ?? '',
+        "permissionDate": req['permissionDate'] ?? '',
+        "fromTime": req['fromTime'] ?? '',
+        "toTime": req['toTime'] ?? '',
+        "leaveType": req['leaveType'] ?? '',
+        if (req['workLocation'] != null) "workLocation": req['workLocation'],
+      };
+
+      await _adminRepo.updateLeaveRequest(
+        token: token,
+        requestId: reqId.toString(),
+        data: payload,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Request $reqId marked as ${newStatus.toUpperCase()}.'),
+            backgroundColor: newStatus == 'approved' ? const Color(0xFF059669) : const Color(0xFF0F172A),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        _loadData();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update status: $e'),
+            backgroundColor: const Color(0xFFDC2626),
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildStatusChoiceChip(
@@ -288,40 +862,6 @@ class _LeaveScreenState extends State<LeaveScreen> {
           ],
         ),
       ),
-    );
-  }
-
-  void _cancelRequest(int index) {
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: Text('Cancel Request?', style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, fontSize: 16)),
-          content: Text(
-            'Are you sure you want to cancel request ${_adminRequests[index]['id']}?',
-            style: GoogleFonts.inter(fontSize: 13),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('No, Keep'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  _adminRequests[index]['status'] = 'CANCELLED';
-                });
-                Navigator.of(ctx).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Request cancelled successfully')),
-                );
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
-              child: const Text('Yes, Cancel Request', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        );
-      },
     );
   }
 
@@ -501,11 +1041,30 @@ class _LeaveScreenState extends State<LeaveScreen> {
       if (_selectedEmpFilter != 'All Employees' && req['employeeName'] != _selectedEmpFilter) {
         return false;
       }
-      if (_selectedTypeFilter != 'All Types' && req['requestType'] != _selectedTypeFilter.toUpperCase()) {
+      final rawType = (req['rawRequestType'] as String? ?? '').toLowerCase();
+      if (_selectedTypeFilter == 'Leave Only' && rawType != 'leave') return false;
+      if (_selectedTypeFilter == 'Permission Only' && rawType != 'permission') return false;
+      if (_selectedTypeFilter == 'Work From Home Only' && rawType != 'work_from_home') return false;
+
+      final reqStatus = (req['status'] as String? ?? '').toUpperCase();
+      if (_selectedStatusFilter != 'All Statuses' && reqStatus != _selectedStatusFilter.toUpperCase()) {
         return false;
       }
-      if (_selectedStatusFilter != 'All Statuses' && req['status'] != _selectedStatusFilter.toUpperCase()) {
-        return false;
+      if (_fromDate != null || _toDate != null) {
+        final reqStart = req['startDate'] as DateTime?;
+        final reqEnd = req['endDate'] as DateTime? ?? reqStart;
+        if (reqStart != null) {
+          if (_fromDate != null && reqEnd != null) {
+            final fromBoundary = DateTime(_fromDate!.year, _fromDate!.month, _fromDate!.day);
+            final endBoundary = DateTime(reqEnd.year, reqEnd.month, reqEnd.day);
+            if (endBoundary.isBefore(fromBoundary)) return false;
+          }
+          if (_toDate != null) {
+            final toBoundary = DateTime(_toDate!.year, _toDate!.month, _toDate!.day);
+            final startBoundary = DateTime(reqStart.year, reqStart.month, reqStart.day);
+            if (startBoundary.isAfter(toBoundary)) return false;
+          }
+        }
       }
       return true;
     }).toList();
@@ -544,7 +1103,7 @@ class _LeaveScreenState extends State<LeaveScreen> {
         ),
         const SizedBox(height: 14),
 
-        // Filter Pods Card (Screenshot 5)
+        // Filter Pods Card (Screenshots 3, 4 & 5)
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -555,17 +1114,21 @@ class _LeaveScreenState extends State<LeaveScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Employee Filter Dropdown
+              // Employee Filter Dropdown (All Employees from API)
               _buildFilterLabel('EMPLOYEE'),
               const SizedBox(height: 4),
               _buildDropdown(
-                value: _selectedEmpFilter,
-                items: ['All Employees', 'Sri Hari', 'Sabarishwaran', 'Kannan', 'Kavin Kumar'],
-                onChanged: (val) => setState(() => _selectedEmpFilter = val!),
+                value: _employeeNames.contains(_selectedEmpFilter) ? _selectedEmpFilter : 'All Employees',
+                items: _employeeNames,
+                onChanged: (val) {
+                  if (val != null) {
+                    setState(() => _selectedEmpFilter = val);
+                  }
+                },
               ),
               const SizedBox(height: 10),
 
-              // Request Type & Status Dropdowns in Row
+              // Request Type & Status Dropdowns in Row (Screenshots 3 & 4)
               Row(
                 children: [
                   Expanded(
@@ -576,8 +1139,13 @@ class _LeaveScreenState extends State<LeaveScreen> {
                         const SizedBox(height: 4),
                         _buildDropdown(
                           value: _selectedTypeFilter,
-                          items: ['All Types', 'Casual Leave', 'Work From Home', 'Permission'],
-                          onChanged: (val) => setState(() => _selectedTypeFilter = val!),
+                          items: const ['All Types', 'Leave Only', 'Permission Only', 'Work From Home Only'],
+                          onChanged: (val) {
+                            if (val != null) {
+                              setState(() => _selectedTypeFilter = val);
+                              _loadData();
+                            }
+                          },
                         ),
                       ],
                     ),
@@ -591,8 +1159,51 @@ class _LeaveScreenState extends State<LeaveScreen> {
                         const SizedBox(height: 4),
                         _buildDropdown(
                           value: _selectedStatusFilter,
-                          items: ['All Statuses', 'Approved', 'Pending', 'Rejected', 'Cancelled'],
-                          onChanged: (val) => setState(() => _selectedStatusFilter = val!),
+                          items: const ['All Statuses', 'Pending', 'Approved', 'Rejected', 'Cancelled'],
+                          onChanged: (val) {
+                            if (val != null) {
+                              setState(() => _selectedStatusFilter = val);
+                              _loadData();
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              // From Date & To Date Pickers in Row (Screenshot 5)
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildFilterLabel('FROM DATE'),
+                        const SizedBox(height: 4),
+                        _buildDatePickerField(
+                          date: _fromDate,
+                          hint: 'dd-mm-yyyy',
+                          onTap: _pickFromDate,
+                          onClear: () => setState(() => _fromDate = null),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildFilterLabel('TO DATE'),
+                        const SizedBox(height: 4),
+                        _buildDatePickerField(
+                          date: _toDate,
+                          hint: 'dd-mm-yyyy',
+                          onTap: _pickToDate,
+                          onClear: () => setState(() => _toDate = null),
                         ),
                       ],
                     ),
@@ -604,8 +1215,15 @@ class _LeaveScreenState extends State<LeaveScreen> {
         ),
         const SizedBox(height: 16),
 
-        // Requests Feed (Screenshot 5)
-        if (filtered.isEmpty)
+        // Requests Feed with Live API Loading State
+        if (_isLoading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: Center(
+              child: CircularProgressIndicator(color: Color(0xFF4F46E5)),
+            ),
+          )
+        else if (filtered.isEmpty)
           Container(
             padding: const EdgeInsets.all(32),
             decoration: BoxDecoration(
@@ -644,6 +1262,110 @@ class _LeaveScreenState extends State<LeaveScreen> {
         letterSpacing: 0.5,
       ),
     );
+  }
+
+  Widget _buildDatePickerField({
+    required DateTime? date,
+    required String hint,
+    required VoidCallback onTap,
+    required VoidCallback onClear,
+  }) {
+    final formatted = date != null
+        ? '${date.day.toString().padLeft(2, '0')}-${date.month.toString().padLeft(2, '0')}-${date.year}'
+        : hint;
+    final isSelected = date != null;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        height: 44,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                formatted,
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                  color: isSelected ? AppColors.textPrimary : const Color(0xFF94A3B8),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (isSelected)
+              GestureDetector(
+                onTap: onClear,
+                child: const Padding(
+                  padding: EdgeInsets.only(right: 6),
+                  child: Icon(Icons.close_rounded, size: 16, color: Color(0xFF94A3B8)),
+                ),
+              ),
+            const Icon(Icons.calendar_month_outlined, size: 16, color: Color(0xFF64748B)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickFromDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _fromDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFF4F46E5),
+              onPrimary: Colors.white,
+              onSurface: AppColors.textPrimary,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      setState(() {
+        _fromDate = picked;
+        if (_toDate != null && _toDate!.isBefore(_fromDate!)) {
+          _toDate = _fromDate;
+        }
+      });
+    }
+  }
+
+  Future<void> _pickToDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _toDate ?? _fromDate ?? DateTime.now(),
+      firstDate: _fromDate ?? DateTime(2020),
+      lastDate: DateTime(2030),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFF4F46E5),
+              onPrimary: Colors.white,
+              onSurface: AppColors.textPrimary,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      setState(() => _toDate = picked);
+    }
   }
 
   Widget _buildDropdown({
@@ -849,48 +1571,136 @@ class _LeaveScreenState extends State<LeaveScreen> {
           ),
           const SizedBox(height: 14),
 
-          // Row 4: Action Buttons (Edit & Cancel)
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () => _showEditStatusModal(req, index),
-                  icon: const Icon(Icons.edit_note_rounded, size: 16),
-                  label: Text(
-                    'Edit Status',
-                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF2563EB),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _cancelRequest(index),
-                  icon: const Icon(Icons.close_rounded, size: 16, color: Color(0xFFDC2626)),
-                  label: Text(
-                    'Cancel',
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFFDC2626),
+          // Row 4: Action Buttons (Approve, Reject, Edit, Cancel)
+          if ((req['status'] as String? ?? '').toUpperCase() == 'PENDING') ...[
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _quickUpdateStatus(req, 'approved'),
+                    icon: const Icon(Icons.check_circle_outline_rounded, size: 15),
+                    label: Text(
+                      'Approve',
+                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF10B981),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      elevation: 0,
                     ),
                   ),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Color(0xFFFECACA)),
-                    backgroundColor: const Color(0xFFFEF2F2),
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _quickUpdateStatus(req, 'rejected'),
+                    icon: const Icon(Icons.highlight_off_rounded, size: 15),
+                    label: Text(
+                      'Reject',
+                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFEF4444),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      elevation: 0,
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showEditRequestModal(req),
+                    icon: const Icon(Icons.edit_note_rounded, size: 16),
+                    label: Text(
+                      'Edit',
+                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2563EB),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      elevation: 0,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _quickUpdateStatus(req, 'cancelled'),
+                    icon: const Icon(Icons.close_rounded, size: 16, color: Color(0xFFDC2626)),
+                    label: Text(
+                      'Cancel',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFFDC2626),
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFFFECACA)),
+                      backgroundColor: const Color(0xFFFEF2F2),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ] else ...[
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showEditRequestModal(req),
+                    icon: const Icon(Icons.edit_note_rounded, size: 16),
+                    label: Text(
+                      'Edit Request',
+                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2563EB),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 9),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      elevation: 0,
+                    ),
+                  ),
+                ),
+                if ((req['status'] as String? ?? '').toUpperCase() != 'CANCELLED') ...[
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _quickUpdateStatus(req, 'cancelled'),
+                      icon: const Icon(Icons.close_rounded, size: 16, color: Color(0xFFDC2626)),
+                      label: Text(
+                        'Cancel',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFFDC2626),
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Color(0xFFFECACA)),
+                        backgroundColor: const Color(0xFFFEF2F2),
+                        padding: const EdgeInsets.symmetric(vertical: 9),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -939,6 +1749,42 @@ class _LeaveScreenState extends State<LeaveScreen> {
                   onChanged: (val) => setState(() => _leaveType = val!),
                 ),
                 const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildFieldLabel('From Date *'),
+                          const SizedBox(height: 6),
+                          _buildDatePickerField(
+                            date: _applyFromDate,
+                            hint: 'dd-mm-yyyy',
+                            onTap: _pickApplyFromDate,
+                            onClear: () => setState(() => _applyFromDate = null),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildFieldLabel('To Date *'),
+                          const SizedBox(height: 6),
+                          _buildDatePickerField(
+                            date: _applyToDate,
+                            hint: 'dd-mm-yyyy',
+                            onTap: _pickApplyToDate,
+                            onClear: () => setState(() => _applyToDate = null),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
                 _buildFieldLabel('Reason *'),
                 const SizedBox(height: 6),
                 TextField(
@@ -958,12 +1804,96 @@ class _LeaveScreenState extends State<LeaveScreen> {
                   child: const Text('Submit Leave Request'),
                 ),
               ] else if (_requestTab == 1) ...[
+                _buildFieldLabel('Permission Date *'),
+                const SizedBox(height: 6),
+                _buildDatePickerField(
+                  date: _permissionDate,
+                  hint: 'dd-mm-yyyy',
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _permissionDate ?? DateTime.now(),
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2030),
+                    );
+                    if (picked != null) {
+                      setState(() => _permissionDate = picked);
+                    }
+                  },
+                  onClear: () => setState(() => _permissionDate = null),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildFieldLabel('From Time *'),
+                          const SizedBox(height: 6),
+                          TextField(
+                            controller: _permissionFromTimeController,
+                            style: GoogleFonts.inter(fontSize: 12),
+                            decoration: InputDecoration(
+                              hintText: '02:00 PM',
+                              filled: true,
+                              fillColor: const Color(0xFFF8FAFC),
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildFieldLabel('To Time *'),
+                          const SizedBox(height: 6),
+                          TextField(
+                            controller: _permissionToTimeController,
+                            style: GoogleFonts.inter(fontSize: 12),
+                            decoration: InputDecoration(
+                              hintText: '04:00 PM',
+                              filled: true,
+                              fillColor: const Color(0xFFF8FAFC),
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
                 _buildFieldLabel('Reason *'),
                 const SizedBox(height: 6),
                 TextField(
                   controller: _permissionReasonController,
                   maxLines: 2,
-                  decoration: const InputDecoration(hintText: 'Enter reason for permission (e.g. 2 hours)...'),
+                  style: GoogleFonts.inter(fontSize: 12),
+                  decoration: InputDecoration(
+                    hintText: 'Enter reason for permission (e.g. 2 hours)...',
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFC),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 ElevatedButton(
@@ -977,11 +1907,84 @@ class _LeaveScreenState extends State<LeaveScreen> {
                   child: const Text('Submit Permission Request'),
                 ),
               ] else ...[
-                _buildFieldLabel('Location *'),
+                _buildFieldLabel('WFH Duration *'),
+                const SizedBox(height: 6),
+                _buildDropdown(
+                  value: _wfhDurationType,
+                  items: _wfhDurationTypes,
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() => _wfhDurationType = val);
+                    }
+                  },
+                ),
+                if (_wfhDurationType == 'Half Day') ...[
+                  const SizedBox(height: 12),
+                  _buildFieldLabel('Half Day Session *'),
+                  const SizedBox(height: 6),
+                  _buildDropdown(
+                    value: _wfhSession,
+                    items: _wfhSessions,
+                    onChanged: (val) {
+                      if (val != null) {
+                        setState(() => _wfhSession = val);
+                      }
+                    },
+                  ),
+                ],
+                const SizedBox(height: 12),
+                _buildFieldLabel('Work Location *'),
                 const SizedBox(height: 6),
                 TextField(
                   controller: _wfhLocationController,
-                  decoration: const InputDecoration(hintText: 'e.g. Home, Chennai...'),
+                  style: GoogleFonts.inter(fontSize: 12),
+                  decoration: InputDecoration(
+                    hintText: 'e.g. Home, Chennai...',
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFC),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildFieldLabel('From Date *'),
+                          const SizedBox(height: 6),
+                          _buildDatePickerField(
+                            date: _applyFromDate,
+                            hint: 'dd-mm-yyyy',
+                            onTap: _pickApplyFromDate,
+                            onClear: () => setState(() => _applyFromDate = null),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildFieldLabel('To Date *'),
+                          const SizedBox(height: 6),
+                          _buildDatePickerField(
+                            date: _applyToDate,
+                            hint: 'dd-mm-yyyy',
+                            onTap: _pickApplyToDate,
+                            onClear: () => setState(() => _applyToDate = null),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 _buildFieldLabel('Reason *'),
@@ -989,7 +1992,18 @@ class _LeaveScreenState extends State<LeaveScreen> {
                 TextField(
                   controller: _wfhReasonController,
                   maxLines: 2,
-                  decoration: const InputDecoration(hintText: 'Enter reason for WFH...'),
+                  style: GoogleFonts.inter(fontSize: 12),
+                  decoration: InputDecoration(
+                    hintText: 'Enter reason for WFH...',
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFC),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 ElevatedButton(
@@ -1050,21 +2064,41 @@ class _LeaveScreenState extends State<LeaveScreen> {
                       ],
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFFBEB),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFFDE68A)),
-                    ),
-                    child: Text(
-                      req['status'] as String,
-                      style: GoogleFonts.inter(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFFD97706),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFFBEB),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFFDE68A)),
+                        ),
+                        child: Text(
+                          req['status'] as String,
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFFD97706),
+                          ),
+                        ),
                       ),
-                    ),
+                      if ((req['status'] as String? ?? '').toUpperCase() == 'PENDING') ...[
+                        const SizedBox(height: 8),
+                        InkWell(
+                          onTap: () => _cancelMyRequest(req['id'] as String),
+                          child: Text(
+                            'Cancel',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFFEF4444),
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
@@ -1118,64 +2152,198 @@ class _LeaveScreenState extends State<LeaveScreen> {
     );
   }
 
-  void _submitMyLeave() {
+  Future<void> _pickApplyFromDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _applyFromDate ?? DateTime.now(),
+      firstDate: DateTime.now().subtract(const Duration(days: 30)),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFF4F46E5),
+              onPrimary: Colors.white,
+              onSurface: AppColors.textPrimary,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      setState(() {
+        _applyFromDate = picked;
+        if (_applyToDate != null && _applyToDate!.isBefore(_applyFromDate!)) {
+          _applyToDate = _applyFromDate;
+        }
+      });
+    }
+  }
+
+  Future<void> _pickApplyToDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _applyToDate ?? _applyFromDate ?? DateTime.now(),
+      firstDate: _applyFromDate ?? DateTime.now().subtract(const Duration(days: 30)),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFF4F46E5),
+              onPrimary: Colors.white,
+              onSurface: AppColors.textPrimary,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      setState(() => _applyToDate = picked);
+    }
+  }
+
+  Future<void> _submitMyLeave() async {
     final reason = _leaveReasonController.text.trim();
     if (reason.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter leave reason')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter leave reason')));
       return;
     }
-    setState(() {
-      _myRequests.insert(0, {
-        'id': 'LV-0000${_myRequests.length + 5}',
-        'type': _leaveType,
-        'dateTime': '18/09/2026 → 19/09/2026',
-        'duration': '2 Day(s)',
-        'detail': reason,
-        'status': 'Pending',
-      });
-      _leaveReasonController.clear();
-    });
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Leave application submitted!')));
+
+    final from = _applyFromDate ?? DateTime.now();
+    final to = _applyToDate ?? from;
+    final token = _getToken();
+
+    try {
+      await _adminRepo.submitLeaveRequest(
+        token: token,
+        data: {
+          'requestType': 'leave',
+          'leaveType': _leaveType,
+          'fromDate': _formatDateForApi(from),
+          'toDate': _formatDateForApi(to),
+          'reason': reason,
+        },
+      );
+
+      if (mounted) {
+        setState(() {
+          _leaveReasonController.clear();
+          _applyFromDate = null;
+          _applyToDate = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Leave application submitted!')));
+      }
+      _loadData();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
   }
 
-  void _submitMyPermission() {
+  Future<void> _submitMyPermission() async {
     final reason = _permissionReasonController.text.trim();
-    if (reason.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter permission reason')));
+    final fromTime = _permissionFromTimeController.text.trim();
+    final toTime = _permissionToTimeController.text.trim();
+    
+    if (reason.isEmpty || fromTime.isEmpty || toTime.isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all required fields')));
       return;
     }
-    setState(() {
-      _myRequests.insert(0, {
-        'id': 'LV-0000${_myRequests.length + 5}',
-        'type': 'Permission',
-        'dateTime': '15/09/2026 (03:00 PM - 05:00 PM)',
-        'duration': '2 Hours',
-        'detail': reason,
-        'status': 'Pending',
-      });
-      _permissionReasonController.clear();
-    });
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Permission application submitted!')));
+
+    final token = _getToken();
+    final pDate = _permissionDate ?? DateTime.now();
+    
+    try {
+      await _adminRepo.submitLeaveRequest(
+        token: token,
+        data: {
+          'requestType': 'permission',
+          'permissionDate': _formatDateForApi(pDate),
+          'fromTime': fromTime,
+          'toTime': toTime,
+          'reason': reason,
+        },
+      );
+
+      if (mounted) {
+        setState(() {
+          _permissionReasonController.clear();
+          _permissionFromTimeController.clear();
+          _permissionToTimeController.clear();
+          _permissionDate = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Permission application submitted!')));
+      }
+      _loadData();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
   }
 
-  void _submitMyWfh() {
+  Future<void> _submitMyWfh() async {
     final reason = _wfhReasonController.text.trim();
-    if (reason.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter WFH reason')));
+    final location = _wfhLocationController.text.trim();
+    if (reason.isEmpty || location.isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all required fields')));
       return;
     }
-    setState(() {
-      _myRequests.insert(0, {
-        'id': 'LV-0000${_myRequests.length + 5}',
-        'type': 'Work From Home',
-        'dateTime': '21/09/2026 → 22/09/2026',
-        'duration': '2 Day(s)',
-        'detail': reason,
-        'status': 'Pending',
-      });
-      _wfhReasonController.clear();
-      _wfhLocationController.clear();
-    });
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Work From Home application submitted!')));
+
+    final from = _applyFromDate ?? DateTime.now();
+    final to = _applyToDate ?? from;
+    final token = _getToken();
+
+    try {
+      final isHalfDay = _wfhDurationType == 'Half Day';
+      await _adminRepo.submitWfhRequest(
+        token: token,
+        data: {
+          'from_date': _formatDateForApi(from),
+          'to_date': _formatDateForApi(to),
+          'duration_type': isHalfDay ? 'half_day' : 'full_day',
+          if (isHalfDay) 'half_day_session': _wfhSession == 'First Half (Morning)' ? 'first_half' : 'second_half',
+          'work_location': location,
+          'reason': reason,
+        },
+      );
+
+      if (mounted) {
+        setState(() {
+          _wfhReasonController.clear();
+          _wfhLocationController.clear();
+          _applyFromDate = null;
+          _applyToDate = null;
+          _wfhDurationType = 'Full Day';
+          _wfhSession = 'First Half (Morning)';
+        });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Work From Home application submitted!')));
+      }
+      _loadData();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
+
+  Future<void> _cancelMyRequest(String requestId) async {
+    try {
+      final token = _getToken();
+      await _adminRepo.cancelLeaveRequest(token: token, requestId: requestId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Request cancelled successfully')));
+      }
+      _loadData();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error cancelling request: $e')));
+      }
+    }
   }
 }
+

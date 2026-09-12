@@ -4,6 +4,7 @@ import 'bloc/auth/auth_bloc.dart';
 import 'bloc/auth/auth_state.dart';
 import 'bloc/tracker/shift_tracker_bloc.dart';
 import 'bloc/attendance/attendance_bloc.dart';
+import 'bloc/admin/admin_dashboard_bloc.dart';
 import 'core/theme/app_theme.dart';
 import 'screens/auth/login_method_screen.dart';
 import 'screens/auth/manual_login_screen.dart';
@@ -30,6 +31,9 @@ class VacChatApp extends StatelessWidget {
         ),
         BlocProvider<AttendanceBloc>(
           create: (_) => AttendanceBloc(),
+        ),
+        BlocProvider<AdminDashboardBloc>(
+          create: (_) => AdminDashboardBloc(),
         ),
       ],
       child: MaterialApp(

@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../bloc/auth/auth_bloc.dart';
+import '../../bloc/auth/auth_state.dart';
 import '../../core/theme/app_colors.dart';
+import '../../repositories/admin_repository.dart';
 
 class EmployeeScreen extends StatefulWidget {
   const EmployeeScreen({super.key});
@@ -10,6 +14,9 @@ class EmployeeScreen extends StatefulWidget {
 }
 
 class _EmployeeScreenState extends State<EmployeeScreen> {
+  final AdminRepository _adminRepo = AdminRepository();
+  bool _isLoading = false;
+
   bool _isCreateExpanded = false;
   final _searchController = TextEditingController();
 
@@ -21,143 +28,244 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
   String _selectedRole = 'Employee';
   bool _obscurePassword = true;
 
-  final List<String> _roleOptions = ['Employee', 'Admin'];
+  final List<String> _roleOptions = ['Employee', 'Manager', 'Admin'];
 
   // Sample employee directory matching screenshot exactly
-  final List<Map<String, dynamic>> _employees = [
-    {
-      'id': 'emp-11',
-      'name': 'Sabarishwaran',
-      'dept': 'App Developer',
-      'email': 'sabarishwaran1718@gmail.com',
-      'role': 'Employee',
-      'status': 'Active',
-      'createdAt': 'Aug 14, 2026',
-      'avatar': 'S',
-      'avatarColor': const Color(0xFF3B82F6),
-    },
-    {
-      'id': 'emp-10',
-      'name': 'Kannan',
-      'dept': 'App web developer',
-      'email': 'kannannsenthil@gmail.com',
-      'role': 'Employee',
-      'status': 'Active',
-      'createdAt': 'Aug 14, 2026',
-      'avatar': 'K',
-      'avatarColor': const Color(0xFFEF4444),
-    },
-    {
-      'id': 'admin-102',
-      'name': 'Kalaivani',
-      'dept': 'Owner',
-      'email': 'kalaivanissd@gmail.com',
-      'role': 'Admin',
-      'status': 'Active',
-      'createdAt': 'Aug 13, 2026',
-      'avatar': 'K',
-      'avatarColor': const Color(0xFF8B5CF6),
-    },
-    {
-      'id': 'emp-09',
-      'name': 'Kavin Kumar',
-      'dept': 'Full Stack Developer',
-      'email': 'skavinshanmugavel@gmail.com',
-      'role': 'Employee',
-      'status': 'Active',
-      'createdAt': 'Aug 12, 2026',
-      'avatar': 'K',
-      'avatarColor': const Color(0xFF10B981),
-    },
-    {
-      'id': 'emp-08',
-      'name': 'Sachin',
-      'dept': 'Data entry',
-      'email': 'sachinsachin0707s@gmail.com',
-      'role': 'Employee',
-      'status': 'Active',
-      'createdAt': 'Aug 12, 2026',
-      'avatar': 'S',
-      'avatarColor': const Color(0xFFF97316),
-    },
-    {
-      'id': 'emp-07',
-      'name': 'Dhanush',
-      'dept': 'Full Stack Developer',
-      'email': 'dhanusjd@gmail.com',
-      'role': 'Employee',
-      'status': 'Active',
-      'createdAt': 'Aug 12, 2026',
-      'avatar': 'D',
-      'avatarColor': const Color(0xFF6366F1),
-    },
-    {
-      'id': 'emp-06',
-      'name': 'Lohit',
-      'dept': 'Full Stack Developer',
-      'email': 'lovelylohit004@gmail.com',
-      'role': 'Employee',
-      'status': 'Active',
-      'createdAt': 'Aug 12, 2026',
-      'avatar': 'L',
-      'avatarColor': const Color(0xFFEC4899),
-    },
-    {
-      'id': 'emp-05',
-      'name': 'Aruna',
-      'dept': 'Data Entry',
-      'email': 'arunamaraj23@gmail.com',
-      'role': 'Employee',
-      'status': 'Active',
-      'createdAt': 'Aug 12, 2026',
-      'avatar': 'A',
-      'avatarColor': const Color(0xFFEAB308),
-    },
-    {
-      'id': 'emp-04',
-      'name': 'Iniya',
-      'dept': 'Data entry',
-      'email': 'sriniya2123@gmail.com',
-      'role': 'Employee',
-      'status': 'Active',
-      'createdAt': 'Aug 12, 2026',
-      'avatar': 'I',
-      'avatarColor': const Color(0xFF14B8A6),
-    },
-    {
-      'id': 'emp-03',
-      'name': 'Sri Hari',
-      'dept': 'Full Stack Developer',
-      'email': 'srihari8489@gmail.com',
-      'role': 'Employee',
-      'status': 'Active',
-      'createdAt': 'Aug 12, 2026',
-      'avatar': 'S',
-      'avatarColor': const Color(0xFF06B6D4),
-    },
-    {
-      'id': 'emp-02',
-      'name': 'Yudesh Prasath',
-      'dept': 'Full Stack Developer',
-      'email': 'yudeshprasath@gmail.com',
-      'role': 'Employee',
-      'status': 'Active',
-      'createdAt': 'Aug 12, 2026',
-      'avatar': 'Y',
-      'avatarColor': const Color(0xFF84CC16),
-    },
-    {
-      'id': 'emp-01',
-      'name': 'Krishna',
-      'dept': 'Full stack developer',
-      'email': 'krishnankrishnaks12@gmail.com',
-      'role': 'Employee',
-      'status': 'Active',
-      'createdAt': 'Aug 12, 2026',
-      'avatar': 'K',
-      'avatarColor': const Color(0xFFF43F5E),
-    },
-  ];
+  List<Map<String, dynamic>> _employees = [];
+
+  String _getToken() {
+    final authState = context.read<AuthBloc>().state;
+    if (authState is AuthenticatedState) {
+      return authState.user.token ?? '';
+    }
+    return '';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadEmployees();
+    });
+  }
+
+  Future<void> _loadEmployees() async {
+    final token = _getToken();
+    if (token.isEmpty) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final data = await _adminRepo.getEmployees(token);
+      final formatted = data.map((e) {
+        final name = (e['name'] as String?)?.trim() ?? 'Unknown';
+        return {
+          'id': e['id'] ?? '',
+          'name': name,
+          'dept': e['department'] ?? 'Employee',
+          'email': e['email'] ?? '',
+          'role': e['role'] ?? 'employee',
+          'status': e['status'] ?? 'active',
+          'createdAt': e['createdAt'] != null ? e['createdAt'].toString().substring(0, 10) : '',
+          'avatar': name.isNotEmpty ? name[0].toUpperCase() : 'U',
+          'avatarColor': _getAvatarColor(name),
+          'raw': e,
+        };
+      }).toList();
+
+      setState(() {
+        _employees = formatted;
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('[EmployeeScreen] Error loading employees: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Color _getAvatarColor(String name) {
+    final colors = [
+      const Color(0xFF3B82F6),
+      const Color(0xFFEF4444),
+      const Color(0xFF8B5CF6),
+      const Color(0xFF10B981),
+      const Color(0xFFF97316),
+      const Color(0xFF6366F1),
+    ];
+    if (name.isEmpty) return colors[0];
+    return colors[name.codeUnitAt(0) % colors.length];
+  }
+
+  Future<void> _updateEmployee(String employeeId, Map<String, dynamic> data) async {
+    final token = _getToken();
+    if (token.isEmpty) return;
+
+    try {
+      await _adminRepo.updateEmployee(
+        token: token,
+        employeeId: employeeId,
+        data: data,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Employee updated successfully!')),
+        );
+      }
+      _loadEmployees();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update employee: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  void _showEditDialog(Map<String, dynamic> emp) {
+    final nameCtrl = TextEditingController(text: emp['name']);
+    final deptCtrl = TextEditingController(text: emp['dept']);
+    final emailCtrl = TextEditingController(text: emp['email']);
+    String selectedRole = emp['role'] != null && emp['role'].toString().isNotEmpty
+        ? emp['role'].toString()[0].toUpperCase() + emp['role'].toString().substring(1)
+        : 'Employee';
+    if (!_roleOptions.contains(selectedRole)) selectedRole = 'Employee';
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: Colors.white,
+              title: Text('Edit Employee', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: nameCtrl,
+                      decoration: const InputDecoration(labelText: 'Name', isDense: true),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: emailCtrl,
+                      decoration: const InputDecoration(labelText: 'Email', isDense: true),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: deptCtrl,
+                      decoration: const InputDecoration(labelText: 'Department', isDense: true),
+                    ),
+                    const SizedBox(height: 10),
+                    DropdownButton<String>(
+                      value: selectedRole,
+                      isExpanded: true,
+                      items: _roleOptions.map((role) {
+                        return DropdownMenuItem<String>(
+                          value: role,
+                          child: Text(role),
+                        );
+                      }).toList(),
+                      onChanged: (val) {
+                        if (val != null) setDialogState(() => selectedRole = val);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _updateEmployee(emp['id'], {
+                      'name': nameCtrl.text.trim(),
+                      'email': emailCtrl.text.trim(),
+                      'department': deptCtrl.text.trim(),
+                      'role': selectedRole.toLowerCase(),
+                    });
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF4F46E5), foregroundColor: Colors.white),
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmDeleteEmployee(String employeeId, String name) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Color(0xFFEF4444), size: 24),
+            const SizedBox(width: 8),
+            Text(
+              'Delete Employee?',
+              style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, fontSize: 16),
+            ),
+          ],
+        ),
+        content: Text(
+          'Are you sure you want to delete "$name"? This action cannot be undone.',
+          style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
+        ),
+        actions: [
+          OutlinedButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Color(0xFFE2E8F0)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldDelete == true) {
+      await _deleteEmployee(employeeId);
+    }
+  }
+
+  Future<void> _deleteEmployee(String employeeId) async {
+    final token = _getToken();
+    if (token.isEmpty) return;
+
+    try {
+      await _adminRepo.deleteEmployee(token: token, employeeId: employeeId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Employee deleted successfully!')),
+        );
+      }
+      _loadEmployees();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete employee: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -179,47 +287,64 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
     });
   }
 
-  void _createEmployee() {
+  Future<void> _createEmployee() async {
     final name = _nameController.text.trim();
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
+    final dept = _departmentController.text.trim();
 
     if (name.isEmpty || email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please fill all required fields (Name, Email, Password)'),
-          backgroundColor: Color(0xFFEF4444),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please fill all required fields (Name, Email, Password)'),
+            backgroundColor: Color(0xFFEF4444),
+          ),
+        );
+      }
       return;
     }
 
-    final newId = _selectedRole == 'Admin'
-        ? 'admin-${100 + _employees.length}'
-        : 'emp-${_employees.length + 1 < 10 ? '0${_employees.length + 1}' : '${_employees.length + 1}'}';
+    final token = _getToken();
+    if (token.isEmpty) return;
 
-    setState(() {
-      _employees.insert(0, {
-        'id': newId,
-        'name': name,
-        'dept': _departmentController.text.trim(),
-        'email': email,
-        'role': _selectedRole,
-        'status': 'Active',
-        'createdAt': 'Sep 11, 2026',
-        'avatar': name[0].toUpperCase(),
-        'avatarColor': _selectedRole == 'Admin' ? const Color(0xFF8B5CF6) : const Color(0xFF3B82F6),
-      });
-      _resetForm();
-      _isCreateExpanded = false;
-    });
+    try {
+      await _adminRepo.createEmployee(
+        token: token,
+        data: {
+          'name': name,
+          'email': email,
+          'password': password,
+          'role': _selectedRole.toLowerCase(),
+          'department': dept,
+        },
+      );
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Employee "$name" created successfully!'),
-        backgroundColor: const Color(0xFF0F172A),
-      ),
-    );
+      if (mounted) {
+        setState(() {
+          _resetForm();
+          _isCreateExpanded = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Employee "$name" created successfully!'),
+            backgroundColor: const Color(0xFF0F172A),
+          ),
+        );
+      }
+      
+      _loadEmployees();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to create employee: $e'),
+            backgroundColor: const Color(0xFFEF4444),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -337,16 +462,21 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
                   const SizedBox(height: 14),
 
                   // 4. Employee Directory Feed (Mobile-Optimized Cards)
-                  ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: filteredEmployees.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 10),
-                    itemBuilder: (context, index) {
-                      final emp = filteredEmployees[index];
-                      return _buildEmployeeCard(emp, index);
-                    },
-                  ),
+                  _isLoading
+                      ? const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 30),
+                          child: Center(child: CircularProgressIndicator(color: Color(0xFF4F46E5))),
+                        )
+                      : ListView.separated(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: filteredEmployees.length,
+                          separatorBuilder: (context, index) => const SizedBox(height: 10),
+                          itemBuilder: (context, index) {
+                            final emp = filteredEmployees[index];
+                            return _buildEmployeeCard(emp, index);
+                          },
+                        ),
                   const SizedBox(height: 30),
                 ],
               ),
@@ -826,16 +956,14 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
                     icon: const Icon(Icons.edit_outlined, size: 16, color: Color(0xFF64748B)),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
-                    onPressed: () {},
+                    onPressed: () => _showEditDialog(emp),
                     tooltip: 'Edit',
                   ),
                   IconButton(
                     icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Color(0xFFEF4444)),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
-                    onPressed: () {
-                      setState(() => _employees.removeAt(index));
-                    },
+                    onPressed: () => _confirmDeleteEmployee(emp['id'], emp['name'] ?? 'Employee'),
                     tooltip: 'Delete',
                   ),
                 ],

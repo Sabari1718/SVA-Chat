@@ -64,6 +64,27 @@ class ShiftTrackerBloc extends Bloc<ShiftTrackerEvent, ShiftTrackerState> {
         currentSessionSeconds: newCurrentSession,
       ));
     });
+
+    on<SyncWithServerEvent>((event, emit) {
+      if (event.status == ShiftStatus.working && _tickerTimer == null) {
+        _tickerTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+          add(TimerTickEvent());
+        });
+      } else if (event.status != ShiftStatus.working) {
+        _tickerTimer?.cancel();
+        _tickerTimer = null;
+      }
+
+      emit(state.copyWith(
+        status: event.status,
+        currentSessionSeconds: event.currentSessionSeconds,
+        normalWorkingSeconds: event.normalWorkingSeconds,
+        extraWorkingSeconds: event.extraWorkingSeconds,
+        totalWorkingSeconds: event.totalWorkingSeconds,
+        remainingSeconds: event.remainingSeconds,
+        loginSessionsCount: event.loginSessionsCount,
+      ));
+    });
   }
 
   @override

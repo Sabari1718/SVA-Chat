@@ -3,6 +3,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../bloc/auth/auth_bloc.dart';
 import '../bloc/auth/auth_state.dart';
+import '../bloc/auth/auth_event.dart';
+import '../bloc/admin/admin_dashboard_bloc.dart';
+import '../bloc/admin/admin_dashboard_state.dart';
 import '../bloc/tracker/shift_tracker_bloc.dart';
 import '../bloc/tracker/shift_tracker_event.dart';
 import '../bloc/tracker/shift_tracker_state.dart';
@@ -283,8 +286,20 @@ class _MainLayoutState extends State<MainLayout> {
 
         return BlocBuilder<ShiftTrackerBloc, ShiftTrackerState>(
           builder: (context, trackerState) {
-            return Scaffold(
-              backgroundColor: const Color(0xFFF8FAFC),
+            return BlocListener<AdminDashboardBloc, AdminDashboardState>(
+              listener: (context, state) {
+                if (state is AdminDashboardError && state.isSessionExpired) {
+                  context.read<AuthBloc>().add(AuthLogoutRequested());
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Session expired from another device. Logging out.'),
+                      backgroundColor: Color(0xFFEF4444),
+                    ),
+                  );
+                }
+              },
+              child: Scaffold(
+                backgroundColor: const Color(0xFFF8FAFC),
               appBar: AppBar(
                 backgroundColor: Colors.white,
                 elevation: 0,
@@ -492,8 +507,9 @@ class _MainLayoutState extends State<MainLayout> {
                   ),
                 ),
               ),
-            );
-          },
+            ),
+          );
+        },
         );
       },
     );

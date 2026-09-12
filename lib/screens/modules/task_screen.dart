@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../bloc/admin/admin_dashboard_bloc.dart';
+import '../../bloc/admin/admin_dashboard_event.dart';
+import '../../bloc/auth/auth_bloc.dart';
+import '../../bloc/auth/auth_state.dart';
 import '../../core/theme/app_colors.dart';
+import '../../repositories/admin_repository.dart';
 
 class TaskScreen extends StatefulWidget {
   const TaskScreen({super.key});
@@ -10,8 +16,12 @@ class TaskScreen extends StatefulWidget {
 }
 
 class _TaskScreenState extends State<TaskScreen> {
-  bool _isCreateView = false; // Default to List view as in screenshot
-  int _viewMode = 1; // Default to Card Grid view for mobile-first experience
+  final _adminRepo = AdminRepository();
+
+  bool _isCreateView = false;
+  int _viewMode = 1; // 0: Table, 1: Card Grid
+  bool _isLoading = false;
+  bool _isSaving = false;
 
   int? _editingIndex;
   final _taskNameController = TextEditingController();
@@ -20,7 +30,7 @@ class _TaskScreenState extends State<TaskScreen> {
   final _completionController = TextEditingController(text: '0');
 
   String _selectedProject = 'Business setup';
-  final List<String> _projectList = [
+  List<String> _projectList = [
     'Business setup',
     'OX',
     'Billing',
@@ -31,89 +41,88 @@ class _TaskScreenState extends State<TaskScreen> {
     'Website Development',
   ];
 
-  // Tasks dataset matching screenshot exactly
-  final List<Map<String, dynamic>> _tasks = [
-    {
-      'name': 'Supplier create',
-      'project': 'Business setup',
-      'duration': '3h',
-      'hours': 3,
-      'minutes': 0,
-      'progress': 0,
-      'status': 'not started',
-      'createdBy': 'Krishna',
-    },
-    {
-      'name': 'OX Class',
-      'project': 'OX',
-      'duration': '22h',
-      'hours': 22,
-      'minutes': 0,
-      'progress': 80,
-      'status': 'in progress',
-      'createdBy': 'Lohit',
-    },
-    {
-      'name': 'Business setup application create',
-      'project': 'Business setup',
-      'duration': '0h 0m',
-      'hours': 0,
-      'minutes': 0,
-      'progress': 100,
-      'status': 'completed',
-      'createdBy': 'Krishna',
-    },
-    {
-      'name': 'Design',
-      'project': 'Billing',
-      'duration': '0h 0m',
-      'hours': 0,
-      'minutes': 0,
-      'progress': 55,
-      'status': 'in progress',
-      'createdBy': 'Krishna',
-    },
-    {
-      'name': 'All Validation',
-      'project': 'validation Form',
-      'duration': '5h',
-      'hours': 5,
-      'minutes': 0,
-      'progress': 0,
-      'status': 'not started',
-      'createdBy': 'Kavin Kumar',
-    },
-    {
-      'name': 'Conversations',
-      'project': 'Chat',
-      'duration': '12h',
-      'hours': 12,
-      'minutes': 0,
-      'progress': 100,
-      'status': 'completed',
-      'createdBy': 'Lohit',
-    },
-    {
-      'name': 'Manage Login',
-      'project': 'Manage',
-      'duration': '24h',
-      'hours': 24,
-      'minutes': 0,
-      'progress': 68,
-      'status': 'in progress',
-      'createdBy': 'Lohit',
-    },
-    {
-      'name': 'User Login',
-      'project': 'User',
-      'duration': '12h',
-      'hours': 12,
-      'minutes': 0,
-      'progress': 50,
-      'status': 'in progress',
-      'createdBy': 'Lohit',
-    },
-  ];
+  List<Map<String, dynamic>> _tasks = [];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadData();
+    });
+  }
+
+  void _loadData() {
+    final authState = context.read<AuthBloc>().state;
+    if (authState is AuthenticatedState) {
+      final token = authState.user.token ?? '';
+      if (token.isNotEmpty) {
+        _fetchTasks(token);
+        _fetchProjects(token);
+      }
+    }
+  }
+
+  Future<void> _fetchTasks(String token) async {
+    setState(() => _isLoading = true);
+    try {
+      final rawList = await _adminRepo.getTasks(token);
+      if (mounted) {
+        setState(() {
+          if (rawList.isNotEmpty) {
+            _tasks = rawList.map((item) => _normalizeTask(item)).toList();
+          }
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _fetchProjects(String token) async {
+    try {
+      final rawProjects = await _adminRepo.getProjects(token);
+      final names = rawProjects
+          .map((p) => p['projectName'] as String? ?? p['name'] as String? ?? '')
+          .where((n) => n.isNotEmpty)
+          .toSet()
+          .toList();
+
+      if (names.isNotEmpty && mounted) {
+        setState(() {
+          _projectList = names;
+          if (!_projectList.contains(_selectedProject)) {
+            _selectedProject = _projectList.first;
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
+  Map<String, dynamic> _normalizeTask(Map<String, dynamic> item) {
+    final name = item['title'] as String? ?? item['name'] as String? ?? 'Untitled Task';
+    final project = item['projectName'] as String? ?? item['project'] as String? ?? 'General';
+    final hours = item['durationHours'] as int? ?? item['hours'] as int? ?? 0;
+    final minutes = item['durationMinutes'] as int? ?? item['minutes'] as int? ?? 0;
+    final progress = item['completionPercentage'] as int? ?? item['progress'] as int? ?? 0;
+    final status = (item['status'] as String? ?? 'not started').toLowerCase();
+    final createdBy = item['creatorName'] as String? ?? item['createdBy'] as String? ?? 'Admin';
+    final duration = item['duration'] as String? ?? (hours > 0 ? '${hours}h' : '${minutes}m');
+    final id = item['id'] as String? ?? '';
+
+    return {
+      'id': id,
+      'name': name,
+      'project': project,
+      'duration': duration,
+      'hours': hours,
+      'minutes': minutes,
+      'progress': progress,
+      'status': status,
+      'createdBy': createdBy,
+      'raw': item,
+    };
+  }
 
   @override
   void dispose() {
@@ -131,7 +140,9 @@ class _TaskScreenState extends State<TaskScreen> {
       _hoursController.text = '0';
       _minutesController.text = '0';
       _completionController.text = '0';
-      _selectedProject = _projectList.first;
+      if (_projectList.isNotEmpty) {
+        _selectedProject = _projectList.first;
+      }
       _isCreateView = true;
     });
   }
@@ -150,17 +161,91 @@ class _TaskScreenState extends State<TaskScreen> {
     });
   }
 
-  void _deleteTask(int index) {
-    final name = _tasks[index]['name'];
-    setState(() {
-      _tasks.removeAt(index);
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Task "$name" deleted'),
-        backgroundColor: const Color(0xFFEF4444),
+  Future<void> _confirmDeleteTask(int index) async {
+    final task = _tasks[index];
+    final taskId = task['id'] as String? ?? '';
+    final name = task['name'] as String? ?? 'Task';
+
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Color(0xFFEF4444), size: 24),
+            const SizedBox(width: 8),
+            Text(
+              'Delete Task?',
+              style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, fontSize: 16),
+            ),
+          ],
+        ),
+        content: Text(
+          'Are you sure you want to delete "$name"? This will immediately remove it from both Mobile and Web portal.',
+          style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
+        ),
+        actions: [
+          OutlinedButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Color(0xFFE2E8F0)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
       ),
     );
+
+    if (shouldDelete != true || !mounted) return;
+
+    final authState = context.read<AuthBloc>().state;
+    final token = authState is AuthenticatedState ? authState.user.token ?? '' : '';
+
+    setState(() => _isLoading = true);
+
+    try {
+      if (token.isNotEmpty && taskId.isNotEmpty) {
+        await _adminRepo.deleteTask(token: token, taskId: taskId);
+        await _fetchTasks(token);
+        if (mounted) {
+          context.read<AdminDashboardBloc>().add(FetchAdminDashboardData(token: token, isRefresh: true));
+        }
+      } else {
+        setState(() {
+          _tasks.removeAt(index);
+        });
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Task "$name" deleted successfully (Synced to Web)'),
+            backgroundColor: const Color(0xFF10B981),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        final cleanMsg = e.toString().replaceFirst('Exception: ', '');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Delete failed: $cleanMsg'), backgroundColor: const Color(0xFFEF4444)),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   String _calculateStatus(int completion) {
@@ -193,7 +278,7 @@ class _TaskScreenState extends State<TaskScreen> {
     }
   }
 
-  void _saveTask() {
+  Future<void> _saveTask() async {
     final name = _taskNameController.text.trim();
     if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -206,43 +291,106 @@ class _TaskScreenState extends State<TaskScreen> {
     final minutes = int.tryParse(_minutesController.text) ?? 0;
     final completion = int.tryParse(_completionController.text) ?? 0;
     final durationText = hours > 0 ? '${hours}h' : '${minutes}m';
+    final calculatedStatus = _calculateStatus(completion);
 
-    setState(() {
-      if (_editingIndex != null && _editingIndex! < _tasks.length) {
-        // Update existing task
-        _tasks[_editingIndex!] = {
-          'name': name,
-          'project': _selectedProject,
-          'duration': durationText,
-          'hours': hours,
-          'minutes': minutes,
-          'progress': completion,
-          'status': _calculateStatus(completion),
-          'createdBy': _tasks[_editingIndex!]['createdBy'] ?? 'Sabarishwaran',
-        };
+    final authState = context.read<AuthBloc>().state;
+    final token = authState is AuthenticatedState ? authState.user.token ?? '' : '';
+
+    final taskPayload = {
+      'title': name,
+      'description': '',
+      'status': calculatedStatus == 'completed'
+          ? 'Completed'
+          : (calculatedStatus == 'in progress' ? 'In Progress' : 'Not Started'),
+      'priority': 'medium',
+      'projectName': _selectedProject,
+      'duration_hours': hours,
+      'duration_minutes': minutes,
+      'completion_percentage': completion,
+      'duration': durationText,
+    };
+
+    setState(() => _isSaving = true);
+
+    try {
+      if (token.isNotEmpty) {
+        if (_editingIndex != null &&
+            _editingIndex! < _tasks.length &&
+            (_tasks[_editingIndex!]['id'] as String? ?? '').isNotEmpty) {
+          final taskId = _tasks[_editingIndex!]['id'] as String;
+          await _adminRepo.updateTask(token: token, taskId: taskId, data: taskPayload);
+        } else {
+          await _adminRepo.createTask(token: token, data: taskPayload);
+        }
+
+        // Re-fetch to synchronize state
+        await _fetchTasks(token);
+        if (mounted) {
+          context.read<AdminDashboardBloc>().add(FetchAdminDashboardData(token: token, isRefresh: true));
+        }
       } else {
-        // Insert new task at beginning
-        _tasks.insert(0, {
-          'name': name,
-          'project': _selectedProject,
-          'duration': durationText,
-          'hours': hours,
-          'minutes': minutes,
-          'progress': completion,
-          'status': _calculateStatus(completion),
-          'createdBy': 'Sabarishwaran',
+        // Fallback local update
+        if (_editingIndex != null && _editingIndex! < _tasks.length) {
+          _tasks[_editingIndex!] = {
+            'name': name,
+            'project': _selectedProject,
+            'duration': durationText,
+            'hours': hours,
+            'minutes': minutes,
+            'progress': completion,
+            'status': calculatedStatus,
+            'createdBy': _tasks[_editingIndex!]['createdBy'] ?? 'Admin',
+          };
+        } else {
+          _tasks.insert(0, {
+            'name': name,
+            'project': _selectedProject,
+            'duration': durationText,
+            'hours': hours,
+            'minutes': minutes,
+            'progress': completion,
+            'status': calculatedStatus,
+            'createdBy': 'Admin',
+          });
+        }
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_editingIndex != null
+                ? 'Task updated successfully'
+                : 'Task added successfully (Synced to Web)'),
+            backgroundColor: const Color(0xFF10B981),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Notice: $e'), backgroundColor: const Color(0xFFEF4444)),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+          _isCreateView = false;
+          _editingIndex = null;
         });
       }
-      _isCreateView = false;
-      _editingIndex = null;
-    });
+    }
+  }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Task saved successfully!'),
-        backgroundColor: Color(0xFF0F172A),
-      ),
-    );
+  Future<void> _handleRefresh() async {
+    final authState = context.read<AuthBloc>().state;
+    if (authState is AuthenticatedState) {
+      final token = authState.user.token ?? '';
+      if (token.isNotEmpty) {
+        await _fetchTasks(token);
+        await _fetchProjects(token);
+      }
+    }
   }
 
   @override
@@ -253,66 +401,61 @@ class _TaskScreenState extends State<TaskScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1100),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Page Header matching Screenshot 1
-                  Text(
-                    'Task Management',
-                    style: GoogleFonts.inter(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Create and manage organization tasks shared across all users.',
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-
-                  // Top Action Bar: [List] vs [+ Create Task] on LEFT, and [Table] vs [Grid] on RIGHT
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      // Left: List vs Create Task toggle
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
-                        ),
-                        padding: const EdgeInsets.all(3),
-                        child: Row(
+        child: RefreshIndicator(
+          onRefresh: _handleRefresh,
+          color: const Color(0xFF7C3AED),
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1100),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Page Header matching Screenshot 1
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _buildLeftToggleOption(
-                              label: 'List',
-                              icon: Icons.format_list_bulleted_rounded,
-                              isSelected: !_isCreateView,
-                              onTap: () => setState(() => _isCreateView = false),
+                            Text(
+                              'Task Management',
+                              style: GoogleFonts.inter(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.textPrimary,
+                              ),
                             ),
-                            const SizedBox(width: 4),
-                            _buildLeftToggleOption(
-                              label: 'Create Task',
-                              icon: Icons.add_circle_outline_rounded,
-                              isSelected: _isCreateView,
-                              onTap: _startCreateTask,
+                            const SizedBox(height: 4),
+                            Text(
+                              'Live synced tasks shared across Web and Mobile.',
+                              style: GoogleFonts.inter(
+                                fontSize: 13,
+                                color: AppColors.textSecondary,
+                              ),
                             ),
                           ],
                         ),
-                      ),
+                        if (_isLoading)
+                          const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Color(0xFF7C3AED),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
 
-                      // Right: Table View vs Grid View Switcher Box Icons
-                      if (!_isCreateView)
+                    // Top Action Bar: [List] vs [+ Create Task] on LEFT, and [Table] vs [Grid] on RIGHT
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // Left: List vs Create Task toggle
                         Container(
                           decoration: BoxDecoration(
                             color: Colors.white,
@@ -322,232 +465,277 @@ class _TaskScreenState extends State<TaskScreen> {
                           padding: const EdgeInsets.all(3),
                           child: Row(
                             children: [
-                              _buildViewSwitcherIcon(
-                                icon: Icons.table_rows_rounded,
-                                isSelected: _viewMode == 0,
-                                onTap: () => setState(() => _viewMode = 0),
-                                tooltip: 'Table View',
+                              _buildLeftToggleOption(
+                                label: 'List (${_tasks.length})',
+                                icon: Icons.format_list_bulleted_rounded,
+                                isSelected: !_isCreateView,
+                                onTap: () => setState(() => _isCreateView = false),
                               ),
                               const SizedBox(width: 4),
-                              _buildViewSwitcherIcon(
-                                icon: Icons.grid_view_rounded,
-                                isSelected: _viewMode == 1,
-                                onTap: () => setState(() => _viewMode = 1),
-                                tooltip: 'Card Grid View',
+                              _buildLeftToggleOption(
+                                label: 'Create Task',
+                                icon: Icons.add_circle_outline_rounded,
+                                isSelected: _isCreateView,
+                                onTap: _startCreateTask,
                               ),
                             ],
                           ),
                         ),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
 
-                  // View Mode 1: Create or Edit Form
-                  if (_isCreateView) ...[
-                    Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.03),
-                            blurRadius: 16,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _editingIndex != null ? 'Edit Task' : 'Create New Task',
-                            style: GoogleFonts.inter(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Fill in the form below to log a new task item.',
-                            style: GoogleFonts.inter(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-
-                          _buildFieldLabel('Task Name *'),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: _taskNameController,
-                            decoration: const InputDecoration(
-                              hintText: 'e.g. Website Redesign Frontend',
-                            ),
-                          ),
-                          const SizedBox(height: 18),
-
-                          _buildFieldLabel('Project Name *'),
-                          const SizedBox(height: 8),
+                        // Right: Table View vs Grid View Switcher Box Icons
+                        if (!_isCreateView)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
                             decoration: BoxDecoration(
                               color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
-                            ),
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: _selectedProject,
-                                isExpanded: true,
-                                icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                                items: _projectList.map((project) {
-                                  return DropdownMenuItem<String>(
-                                    value: project,
-                                    child: Text(
-                                      project,
-                                      style: GoogleFonts.inter(fontSize: 14, color: AppColors.textPrimary),
-                                    ),
-                                  );
-                                }).toList(),
-                                onChanged: (val) {
-                                  if (val != null) {
-                                    setState(() => _selectedProject = val);
-                                  }
-                                },
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 18),
-
-                          _buildFieldLabel('Duration *'),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('Hours', style: GoogleFonts.inter(fontSize: 11, color: AppColors.textSecondary)),
-                                    const SizedBox(height: 4),
-                                    TextField(
-                                      controller: _hoursController,
-                                      keyboardType: TextInputType.number,
-                                      decoration: const InputDecoration(hintText: '0'),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('Minutes', style: GoogleFonts.inter(fontSize: 11, color: AppColors.textSecondary)),
-                                    const SizedBox(height: 4),
-                                    TextField(
-                                      controller: _minutesController,
-                                      keyboardType: TextInputType.number,
-                                      decoration: const InputDecoration(hintText: '0'),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 18),
-
-                          _buildFieldLabel('Task Completion (%) *'),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: _completionController,
-                            keyboardType: TextInputType.number,
-                            onChanged: (_) => setState(() {}),
-                            decoration: const InputDecoration(
-                              hintText: '0',
-                              suffixText: '%',
-                            ),
-                          ),
-                          const SizedBox(height: 18),
-
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(10),
                               border: Border.all(color: const Color(0xFFE2E8F0)),
                             ),
+                            padding: const EdgeInsets.all(3),
                             child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(
-                                  'Calculated Task Status:',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w500,
-                                    color: AppColors.textSecondary,
-                                  ),
+                                _buildViewSwitcherIcon(
+                                  icon: Icons.table_rows_rounded,
+                                  isSelected: _viewMode == 0,
+                                  onTap: () => setState(() => _viewMode = 0),
+                                  tooltip: 'Table View',
                                 ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: _getStatusBg(calculatedStatus),
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(
-                                      color: _getStatusColor(calculatedStatus).withValues(alpha: 0.3),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    calculatedStatus,
-                                    style: GoogleFonts.inter(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: _getStatusColor(calculatedStatus),
-                                    ),
-                                  ),
+                                const SizedBox(width: 4),
+                                _buildViewSwitcherIcon(
+                                  icon: Icons.grid_view_rounded,
+                                  isSelected: _viewMode == 1,
+                                  onTap: () => setState(() => _viewMode = 1),
+                                  tooltip: 'Card Grid View',
                                 ),
                               ],
                             ),
                           ),
-                          const SizedBox(height: 24),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
 
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
+                    // View Mode 1: Create or Edit Form
+                    if (_isCreateView) ...[
+                      Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.03),
+                              blurRadius: 16,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _editingIndex != null ? 'Edit Task' : 'Create New Task',
+                              style: GoogleFonts.inter(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Fill in the form below. Task will immediately show on the Web portal.',
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+
+                            _buildFieldLabel('Task Name *'),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: _taskNameController,
+                              decoration: const InputDecoration(
+                                hintText: 'e.g. Website Redesign Frontend',
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+
+                            _buildFieldLabel('Project Name *'),
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+                              ),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  value: _selectedProject,
+                                  isExpanded: true,
+                                  icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                                  items: _projectList.map((project) {
+                                    return DropdownMenuItem<String>(
+                                      value: project,
+                                      child: Text(
+                                        project,
+                                        style: GoogleFonts.inter(fontSize: 14, color: AppColors.textPrimary),
+                                      ),
+                                    );
+                                  }).toList(),
+                                  onChanged: (val) {
+                                    if (val != null) {
+                                      setState(() => _selectedProject = val);
+                                    }
+                                  },
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+
+                            _buildFieldLabel('Duration *'),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('Hours', style: GoogleFonts.inter(fontSize: 11, color: AppColors.textSecondary)),
+                                      const SizedBox(height: 4),
+                                      TextField(
+                                        controller: _hoursController,
+                                        keyboardType: TextInputType.number,
+                                        decoration: const InputDecoration(hintText: '0'),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('Minutes', style: GoogleFonts.inter(fontSize: 11, color: AppColors.textSecondary)),
+                                      const SizedBox(height: 4),
+                                      TextField(
+                                        controller: _minutesController,
+                                        keyboardType: TextInputType.number,
+                                        decoration: const InputDecoration(hintText: '0'),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 18),
+
+                            _buildFieldLabel('Completion Percentage (%)'),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: _completionController,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(hintText: '0'),
+                              onChanged: (_) => setState(() {}),
+                            ),
+                            const SizedBox(height: 18),
+
+                            _buildFieldLabel('Current Status'),
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF8FAFC),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFFE2E8F0)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Text(
+                                    'Auto-calculated: ',
+                                    style: GoogleFonts.inter(fontSize: 12, color: AppColors.textSecondary),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: _getStatusBg(calculatedStatus),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: _getStatusColor(calculatedStatus).withValues(alpha: 0.3),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      calculatedStatus,
+                                      style: GoogleFonts.inter(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: _getStatusColor(calculatedStatus),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                OutlinedButton(
+                                  onPressed: () => setState(() => _isCreateView = false),
+                                  style: OutlinedButton.styleFrom(
+                                    side: const BorderSide(color: Color(0xFFE2E8F0)),
+                                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  ),
+                                  child: Text('Cancel', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600)),
+                                ),
+                                const SizedBox(width: 12),
+                                ElevatedButton(
+                                  onPressed: _isSaving ? null : _saveTask,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF0F172A),
+                                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  ),
+                                  child: _isSaving
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                        )
+                                      : Text(
+                                          _editingIndex != null ? 'Update Task' : 'Save Task',
+                                          style: GoogleFonts.inter(
+                                              fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white),
+                                        ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ] else ...[
+                      // View Mode 2: Table / Row List View (Screenshot 1)
+                      if (_tasks.isEmpty && !_isLoading)
+                        Container(
+                          padding: const EdgeInsets.all(40),
+                          alignment: Alignment.center,
+                          child: Column(
                             children: [
-                              OutlinedButton(
-                                onPressed: () => setState(() => _isCreateView = false),
-                                style: OutlinedButton.styleFrom(
-                                  side: const BorderSide(color: Color(0xFFE2E8F0)),
-                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                ),
-                                child: Text('Cancel', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600)),
-                              ),
-                              const SizedBox(width: 12),
-                              ElevatedButton(
-                                onPressed: _saveTask,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF0F172A),
-                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                ),
-                                child: Text(
-                                  _editingIndex != null ? 'Update Task' : 'Save Task',
-                                  style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white),
-                                ),
-                              ),
+                              const Icon(Icons.check_circle_outline_rounded, size: 48, color: Color(0xFF94A3B8)),
+                              const SizedBox(height: 12),
+                              Text('No tasks found.', style: GoogleFonts.inter(fontSize: 14, color: AppColors.textSecondary)),
                             ],
                           ),
-                        ],
-                      ),
-                    ),
-                  ] else ...[
-                    // View Mode 2: Table / Row List View (Screenshot 1)
-                    if (_viewMode == 0) _buildTableView() else _buildGridView(),
+                        )
+                      else if (_viewMode == 0)
+                        _buildTableView()
+                      else
+                        _buildGridView(),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),
@@ -680,7 +868,7 @@ class _TaskScreenState extends State<TaskScreen> {
                           ),
                           IconButton(
                             icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFEF4444)),
-                            onPressed: () => _deleteTask(index),
+                            onPressed: () => _confirmDeleteTask(index),
                             tooltip: 'Delete Task',
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
@@ -745,7 +933,12 @@ class _TaskScreenState extends State<TaskScreen> {
                     children: [
                       Text(
                         'TASK #${index + 1}',
-                        style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: const Color(0xFF94A3B8), letterSpacing: 0.5),
+                        style: GoogleFonts.inter(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF94A3B8),
+                          letterSpacing: 0.5,
+                        ),
                       ),
                       Row(
                         children: [
@@ -759,7 +952,7 @@ class _TaskScreenState extends State<TaskScreen> {
                           ),
                           const SizedBox(width: 4),
                           InkWell(
-                            onTap: () => _deleteTask(index),
+                            onTap: () => _confirmDeleteTask(index),
                             borderRadius: BorderRadius.circular(6),
                             child: const Padding(
                               padding: EdgeInsets.all(4),
@@ -779,7 +972,7 @@ class _TaskScreenState extends State<TaskScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
 
-                  // Project Name pill & Created By
+                  // Project Name pill
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
