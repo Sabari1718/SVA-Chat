@@ -30,7 +30,7 @@ class _ManualLoginScreenState extends State<ManualLoginScreen> {
   void _onLoginPressed() {
     context.read<AuthBloc>().add(
           AuthManualLoginRequested(
-            email: _emailController.text,
+            email: _emailController.text.trim(),
             password: _passwordController.text,
             rememberMe: _rememberMe,
           ),
@@ -295,59 +295,7 @@ class _ManualLoginScreenState extends State<ManualLoginScreen> {
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 16),
-
-                                // Quick Test Account Fillers
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: OutlinedButton(
-                                        onPressed: () {
-                                          setState(() {
-                                            _emailController.text = 'kalaivanissd@gmail.com';
-                                            _passwordController.text = 'Vanissd@123';
-                                          });
-                                        },
-                                        style: OutlinedButton.styleFrom(
-                                          side: BorderSide(color: const Color(0xFF8B5CF6).withValues(alpha: 0.5)),
-                                          backgroundColor: const Color(0xFF8B5CF6).withValues(alpha: 0.1),
-                                          padding: const EdgeInsets.symmetric(vertical: 8),
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                        ),
-                                        child: Text(
-                                          'Fill Admin (Kalaivani)',
-                                          style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: const Color(0xFFC4B5FD)),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: OutlinedButton(
-                                        onPressed: () {
-                                          setState(() {
-                                            _emailController.text = 'sabarishwaran1718@gmail.com';
-                                            _passwordController.text = '123456';
-                                          });
-                                        },
-                                        style: OutlinedButton.styleFrom(
-                                          side: BorderSide(color: const Color(0xFF3B82F6).withValues(alpha: 0.5)),
-                                          backgroundColor: const Color(0xFF3B82F6).withValues(alpha: 0.1),
-                                          padding: const EdgeInsets.symmetric(vertical: 8),
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                        ),
-                                        child: Text(
-                                          'Fill Emp (Sabari)',
-                                          style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: const Color(0xFF93C5FD)),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 18),
+                                const SizedBox(height: 24),
 
                                 // High Impact Gradient Sign In CTA
                                 SizedBox(
