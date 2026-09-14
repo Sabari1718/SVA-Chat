@@ -26,6 +26,11 @@ class ApiConstants {
   static String chatMessages(String convId) => '$baseUrl/chat/messages/$convId';
   static const String chatSendMessage = '$baseUrl/chat/messages';
   static const String chatGroups = '$baseUrl/chat/groups';
+  static String chatGroup(String groupId) => '$baseUrl/chat/groups/$groupId';
+  static String chatGroupDetails(String groupId) => '$baseUrl/chat/groups/$groupId/details';
+  static String chatGroupMembers(String groupId) => '$baseUrl/chat/groups/$groupId/members';
+  static String chatGroupMember(String groupId, String memberId) => '$baseUrl/chat/groups/$groupId/members/$memberId';
+  static String chatGroupLeave(String groupId) => '$baseUrl/chat/groups/$groupId/leave';
   static const String chatUpload = '$baseUrl/chat/upload';
   
   // Leave & Permission Endpoints

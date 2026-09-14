@@ -735,6 +735,174 @@ class AdminRepository {
     }
   }
 
+  Future<Map<String, dynamic>?> getGroupDetails({
+    required String token,
+    required String groupId,
+  }) async {
+    try {
+      final url = Uri.parse(ApiConstants.chatGroupDetails(groupId));
+      final response = await _client
+          .get(url, headers: _headers(token))
+          .timeout(const Duration(seconds: 15));
+
+      final decoded = jsonDecode(response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        if (decoded is Map<String, dynamic> && decoded['data'] is Map<String, dynamic>) {
+          return decoded['data'] as Map<String, dynamic>;
+        }
+        return decoded is Map<String, dynamic> ? decoded : null;
+      } else {
+        final errorMsg = decoded is Map ? decoded['message'] ?? 'Failed to get group details' : 'Failed to get group details';
+        throw Exception(errorMsg);
+      }
+    } catch (e) {
+      debugPrint('[AdminRepository] getGroupDetails error: $e');
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> updateChatGroup({
+    required String token,
+    required String groupId,
+    required String name,
+    String? description,
+    String? avatar,
+  }) async {
+    try {
+      final url = Uri.parse(ApiConstants.chatGroup(groupId));
+      final body = <String, dynamic>{
+        'name': name.trim(),
+        'description': description?.trim() ?? '',
+        'avatar': avatar,
+      };
+
+      final response = await _client
+          .put(
+            url,
+            headers: _headers(token),
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      final decoded = jsonDecode(response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        if (decoded is Map<String, dynamic> && decoded['data'] is Map<String, dynamic>) {
+          return decoded['data'] as Map<String, dynamic>;
+        }
+        return decoded is Map<String, dynamic> ? decoded : {};
+      } else {
+        final errorMsg = decoded is Map ? decoded['message'] ?? 'Failed to update group' : 'Failed to update group';
+        throw Exception(errorMsg);
+      }
+    } catch (e) {
+      debugPrint('[AdminRepository] updateChatGroup error: $e');
+      rethrow;
+    }
+  }
+
+  Future<bool> addGroupMembers({
+    required String token,
+    required String groupId,
+    required List<String> memberIds,
+  }) async {
+    try {
+      final url = Uri.parse(ApiConstants.chatGroupMembers(groupId));
+      final response = await _client
+          .post(
+            url,
+            headers: _headers(token),
+            body: jsonEncode({'memberIds': memberIds}),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      final decoded = jsonDecode(response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return true;
+      } else {
+        final errorMsg = decoded is Map ? decoded['message'] ?? 'Failed to add members' : 'Failed to add members';
+        throw Exception(errorMsg);
+      }
+    } catch (e) {
+      debugPrint('[AdminRepository] addGroupMembers error: $e');
+      rethrow;
+    }
+  }
+
+  Future<bool> removeGroupMember({
+    required String token,
+    required String groupId,
+    required String memberId,
+  }) async {
+    try {
+      final url = Uri.parse(ApiConstants.chatGroupMember(groupId, memberId));
+      final response = await _client
+          .delete(url, headers: _headers(token))
+          .timeout(const Duration(seconds: 15));
+
+      final decoded = jsonDecode(response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return true;
+      } else {
+        final errorMsg = decoded is Map ? decoded['message'] ?? 'Failed to remove member' : 'Failed to remove member';
+        throw Exception(errorMsg);
+      }
+    } catch (e) {
+      debugPrint('[AdminRepository] removeGroupMember error: $e');
+      rethrow;
+    }
+  }
+
+  Future<bool> deleteChatGroup({
+    required String token,
+    required String groupId,
+  }) async {
+    try {
+      final url = Uri.parse(ApiConstants.chatGroup(groupId));
+      final response = await _client
+          .delete(url, headers: _headers(token))
+          .timeout(const Duration(seconds: 15));
+
+      final decoded = jsonDecode(response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return true;
+      } else {
+        final errorMsg = decoded is Map ? decoded['message'] ?? 'Failed to delete group' : 'Failed to delete group';
+        throw Exception(errorMsg);
+      }
+    } catch (e) {
+      debugPrint('[AdminRepository] deleteChatGroup error: $e');
+      rethrow;
+    }
+  }
+
+  Future<bool> leaveChatGroup({
+    required String token,
+    required String groupId,
+    String? newAdminId,
+  }) async {
+    try {
+      final url = Uri.parse(ApiConstants.chatGroupLeave(groupId));
+      final response = await _client
+          .post(
+            url,
+            headers: _headers(token),
+            body: jsonEncode({'newAdminId': newAdminId}),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      final decoded = jsonDecode(response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return true;
+      } else {
+        final errorMsg = decoded is Map ? decoded['message'] ?? 'Failed to leave group' : 'Failed to leave group';
+        throw Exception(errorMsg);
+      }
+    } catch (e) {
+      debugPrint('[AdminRepository] leaveChatGroup error: $e');
+      rethrow;
+    }
+  }
+
   // ==========================================
   // PAYSLIPS
   // ==========================================

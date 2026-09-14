@@ -729,6 +729,1789 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  String? _getAvatarFullUrl(String? avatar) {
+    if (avatar == null || avatar.trim().isEmpty) return null;
+    final trimmed = avatar.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    } else if (trimmed.startsWith('/')) {
+      return 'https://employee-management.srivagroups.in$trimmed';
+    } else {
+      return 'https://employee-management.srivagroups.in/$trimmed';
+    }
+  }
+
+  void _showZoomPhotoDialog(String? avatarUrl, String title) {
+    final fullUrl = _getAvatarFullUrl(avatarUrl);
+    if (fullUrl == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No photo available to zoom'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(16),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            InteractiveViewer(
+              clipBehavior: Clip.none,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Image.network(
+                  fullUrl,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text('Failed to load image', style: GoogleFonts.inter(fontSize: 13)),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: CircleAvatar(
+                backgroundColor: Colors.black54,
+                radius: 18,
+                child: IconButton(
+                  icon: const Icon(Icons.close_rounded, color: Colors.white, size: 18),
+                  padding: EdgeInsets.zero,
+                  onPressed: () => Navigator.of(ctx).pop(),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // =========================================================
+  // MEMBER DETAILS MODAL (Screenshot 2)
+  // =========================================================
+  void _showMemberDetailsDialog(Map<String, dynamic> member) {
+    final name = member['name'] as String? ?? 'Member';
+    final email = member['email'] as String? ?? '-';
+    final department = member['department'] as String? ?? member['role'] as String? ?? '-';
+    final role = (member['role'] as String? ?? 'employee').toUpperCase();
+    final avatar = member['avatar'] as String?;
+    final initial = name.isNotEmpty ? name[0].toUpperCase() : 'M';
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => Dialog(
+        backgroundColor: Colors.white,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 350),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Circular close button at top right
+                Align(
+                  alignment: Alignment.topRight,
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFF1F5F9),
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.close_rounded, size: 16, color: Color(0xFF64748B)),
+                      onPressed: () => Navigator.of(dialogCtx).pop(),
+                      padding: EdgeInsets.zero,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+
+                // Member Avatar (Dark blue circle with bold initial or photo)
+                _buildAvatarWidget(avatar, initial, isGroup: false, radius: 42),
+                const SizedBox(height: 14),
+
+                // Member Name
+                Text(
+                  name,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 6),
+
+                // Role Pill (e.g. ADMIN, MEMBER)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    role,
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF475569),
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                const SizedBox(height: 18),
+
+                // Department Row
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Department',
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        color: const Color(0xFF64748B),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: Text(
+                        department,
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                        ),
+                        textAlign: TextAlign.right,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // Email Row
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Email',
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        color: const Color(0xFF64748B),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: Text(
+                        email,
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                        ),
+                        textAlign: TextAlign.right,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // =========================================================
+  // GROUP INFORMATION DIALOG (Screenshot 2)
+  // =========================================================
+  Future<void> _showGroupInfoDialog() async {
+    final groupId = _selectedConversationId;
+    if (groupId == null || groupId.isEmpty) return;
+
+    final token = _getToken();
+    if (token.isEmpty) return;
+
+    await showDialog(
+      context: context,
+      builder: (dialogCtx) {
+        Map<String, dynamic>? groupDetails;
+        bool isLoadingDetails = true;
+        String? errorMessage;
+
+        return StatefulBuilder(
+          builder: (modalContext, setModalState) {
+            void loadDetails() async {
+              try {
+                final data = await _adminRepo.getGroupDetails(token: token, groupId: groupId);
+                if (modalContext.mounted) {
+                  setModalState(() {
+                    groupDetails = data;
+                    isLoadingDetails = false;
+                    errorMessage = null;
+                  });
+                }
+              } catch (e) {
+                if (modalContext.mounted) {
+                  setModalState(() {
+                    isLoadingDetails = false;
+                    errorMessage = e.toString().replaceAll('Exception: ', '');
+                  });
+                }
+              }
+            }
+
+            if (isLoadingDetails && groupDetails == null && errorMessage == null) {
+              loadDetails();
+            }
+
+            final mediaQuery = MediaQuery.of(modalContext);
+            final dialogWidth = (mediaQuery.size.width * 0.92).clamp(320.0, 480.0);
+            final dialogMaxHeight = mediaQuery.size.height * 0.88;
+
+            return Dialog(
+              backgroundColor: Colors.white,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              clipBehavior: Clip.antiAlias,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: dialogWidth,
+                  maxHeight: dialogMaxHeight,
+                ),
+                child: isLoadingDetails
+                    ? const SizedBox(
+                        height: 250,
+                        child: Center(
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF4F46E5)),
+                        ),
+                      )
+                    : errorMessage != null
+                        ? Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 40),
+                                const SizedBox(height: 12),
+                                Text(
+                                  errorMessage!,
+                                  textAlign: TextAlign.center,
+                                  style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
+                                ),
+                                const SizedBox(height: 16),
+                                ElevatedButton(
+                                  onPressed: () {
+                                    setModalState(() {
+                                      isLoadingDetails = true;
+                                      errorMessage = null;
+                                    });
+                                    loadDetails();
+                                  },
+                                  child: const Text('Retry'),
+                                ),
+                              ],
+                            ),
+                          )
+                        : _buildGroupInfoContent(
+                            context: modalContext,
+                            setModalState: setModalState,
+                            details: groupDetails ?? {},
+                            onReload: loadDetails,
+                          ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildGroupInfoContent({
+    required BuildContext context,
+    required StateSetter setModalState,
+    required Map<String, dynamic> details,
+    required VoidCallback onReload,
+  }) {
+    final name = details['name'] as String? ?? 'Group';
+    final description = details['description'] as String? ?? '';
+    final avatar = details['avatar'] as String?;
+    final creatorName = details['creatorName'] as String? ?? 'Admin';
+    final members = (details['members'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
+    final currentUserId = _getCurrentUserId();
+    final initial = name.isNotEmpty ? (name.length >= 3 ? name.substring(0, 3).toUpperCase() : name.toUpperCase()) : 'GRP';
+
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Header: Group Information & Close [X]
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Group Information',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close_rounded, size: 20, color: Color(0xFF94A3B8)),
+                onPressed: () => Navigator.of(context).pop(),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
+          ),
+          const Divider(height: 20, color: Color(0xFFF1F5F9)),
+
+          // Scrollable Group Details
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  const SizedBox(height: 4),
+                  // Group Avatar
+                  _buildAvatarWidget(avatar, initial, isGroup: true, radius: 36),
+                  const SizedBox(height: 10),
+
+                  // Group Name
+                  Text(
+                    name,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+
+                  // View / Zoom Group Photo Button
+                  InkWell(
+                    onTap: () => _showZoomPhotoDialog(avatar, name),
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEEF2FF),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: const Color(0xFFE0E7FF)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.visibility_outlined, size: 14, color: Color(0xFF6366F1)),
+                          const SizedBox(width: 6),
+                          Text(
+                            'View / Zoom Group Photo',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF6366F1),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Members Count & Description
+                  Text(
+                    '${members.length} Members',
+                    style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF64748B)),
+                  ),
+                  if (description.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      description,
+                      style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF64748B)),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+
+                  // Creator Badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFFBEB),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFFDE68A)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.shield_outlined, size: 14, color: Color(0xFFD97706)),
+                        const SizedBox(width: 5),
+                        Text(
+                          'Creator: $creatorName',
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFFD97706),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Action Buttons: [Edit Group] [Add Members] [Delete Group]
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          _showEditGroupDialog(
+                            initialGroupData: details,
+                            onUpdated: (updated) {
+                              setModalState(() {
+                                details['name'] = updated['name'] ?? details['name'];
+                                details['description'] = updated['description'] ?? details['description'];
+                                details['avatar'] = updated['avatar'];
+                              });
+                              onReload();
+                            },
+                          );
+                        },
+                        icon: const Icon(Icons.edit_outlined, size: 14, color: Color(0xFF334155)),
+                        label: Text(
+                          'Edit Group',
+                          style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF334155)),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Color(0xFFE2E8F0)),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          _showAddMembersDialog(
+                            groupId: details['id'] as String? ?? '',
+                            currentMembers: members,
+                            onMembersAdded: onReload,
+                          );
+                        },
+                        icon: const Icon(Icons.person_add_alt_1_outlined, size: 14, color: Color(0xFF334155)),
+                        label: Text(
+                          'Add Members',
+                          style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF334155)),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Color(0xFFE2E8F0)),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          _confirmDeleteGroup(
+                            parentDialogContext: context,
+                            groupId: details['id'] as String? ?? '',
+                            groupName: name,
+                          );
+                        },
+                        icon: const Icon(Icons.delete_outline_rounded, size: 14, color: Color(0xFFEF4444)),
+                        label: Text(
+                          'Delete Group',
+                          style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFFEF4444)),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Color(0xFFFECACA)),
+                          backgroundColor: const Color(0xFFFEF2F2),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 28, color: Color(0xFFF1F5F9)),
+
+                  // Members Section
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Members (${members.length})',
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Members List
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: members.length,
+                    separatorBuilder: (context, index) => const SizedBox(height: 8),
+                    itemBuilder: (ctx, idx) {
+                      final m = members[idx];
+                      final mId = m['id'] as String? ?? '';
+                      final mName = m['name'] as String? ?? 'Member';
+                      final mAvatar = m['avatar'] as String?;
+                      final mRole = m['role'] as String? ?? 'employee';
+                      final isCreator = m['isCreator'] == true;
+                      final mOnline = m['online'] == true;
+                      final mInitial = mName.isNotEmpty ? mName[0].toUpperCase() : 'M';
+
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFF1F5F9)),
+                        ),
+                        child: Row(
+                          children: [
+                            _buildAvatarWidget(mAvatar, mInitial, isGroup: false, radius: 17),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          mName,
+                                          style: GoogleFonts.inter(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppColors.textPrimary,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      if (isCreator || mRole.toLowerCase() == 'admin')
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFEEF2FF),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Text(
+                                            'Admin',
+                                            style: GoogleFonts.inter(
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.w700,
+                                              color: const Color(0xFF4F46E5),
+                                            ),
+                                          ),
+                                        )
+                                      else
+                                        Text(
+                                          'Member',
+                                          style: GoogleFonts.inter(
+                                            fontSize: 10,
+                                            color: AppColors.textSecondary,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 6,
+                                        height: 6,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: mOnline ? const Color(0xFF10B981) : const Color(0xFF94A3B8),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        mOnline ? 'Online' : 'Offline',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 10,
+                                          color: mOnline ? const Color(0xFF10B981) : const Color(0xFF94A3B8),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            // Action Buttons: Zoom & Remove
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                OutlinedButton.icon(
+                                  onPressed: () => _showMemberDetailsDialog(m),
+                                  icon: const Icon(Icons.visibility_outlined, size: 12, color: Color(0xFF2563EB)),
+                                  label: Text(
+                                    'Zoom',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: const Color(0xFF2563EB),
+                                    ),
+                                  ),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    minimumSize: Size.zero,
+                                    side: const BorderSide(color: Color(0xFFBFDBFE)),
+                                    backgroundColor: const Color(0xFFEFF6FF),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                ),
+                                if (!isCreator && mId != currentUserId) ...[
+                                  const SizedBox(width: 6),
+                                  OutlinedButton.icon(
+                                    onPressed: () {
+                                      _confirmRemoveMember(
+                                        parentDialogContext: context,
+                                        groupId: details['id'] as String? ?? '',
+                                        memberId: mId,
+                                        memberName: mName,
+                                        onRemoved: onReload,
+                                      );
+                                    },
+                                    icon: const Icon(Icons.delete_outline_rounded, size: 12, color: Color(0xFFEF4444)),
+                                    label: Text(
+                                      'Remove',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                        color: const Color(0xFFEF4444),
+                                      ),
+                                    ),
+                                    style: OutlinedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      minimumSize: Size.zero,
+                                      side: const BorderSide(color: Color(0xFFFECACA)),
+                                      backgroundColor: const Color(0xFFFEF2F2),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                  const Divider(height: 24, color: Color(0xFFF1F5F9)),
+
+                  // Leave Group Button
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      _confirmLeaveGroup(
+                        parentDialogContext: context,
+                        groupId: details['id'] as String? ?? '',
+                        groupName: name,
+                        members: members,
+                      );
+                    },
+                    icon: const Icon(Icons.exit_to_app_rounded, size: 14, color: Color(0xFFEF4444)),
+                    label: Text(
+                      'Leave Group',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFFEF4444),
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFFFECACA)),
+                      backgroundColor: const Color(0xFFFEF2F2),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // =========================================================
+  // EDIT GROUP DIALOG (Screenshot 3)
+  // =========================================================
+  Future<void> _showEditGroupDialog({
+    required Map<String, dynamic> initialGroupData,
+    required Function(Map<String, dynamic>) onUpdated,
+  }) async {
+    final groupId = initialGroupData['id'] as String? ?? '';
+    final nameCtrl = TextEditingController(text: initialGroupData['name'] as String? ?? '');
+    final descCtrl = TextEditingController(text: initialGroupData['description'] as String? ?? '');
+    String? currentAvatar = initialGroupData['avatar'] as String?;
+    String? localPhotoPath;
+    bool isUploading = false;
+    bool isSaving = false;
+
+    await showDialog(
+      context: context,
+      builder: (editCtx) {
+        return StatefulBuilder(
+          builder: (modalCtx, setEditState) {
+            final mediaQuery = MediaQuery.of(modalCtx);
+            final dialogWidth = (mediaQuery.size.width * 0.9).clamp(320.0, 440.0);
+
+            return Dialog(
+              backgroundColor: Colors.white,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: dialogWidth,
+                  maxHeight: mediaQuery.size.height * 0.85,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Edit Group Details',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, size: 20, color: Color(0xFF94A3B8)),
+                            onPressed: () => Navigator.of(editCtx).pop(),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
+                        ],
+                      ),
+                      const Divider(height: 20, color: Color(0xFFF1F5F9)),
+
+                      Flexible(
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Group Profile Photo
+                              Center(
+                                child: Column(
+                                  children: [
+                                    Text(
+                                      'Group Profile Photo',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.textPrimary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+
+                                    // Avatar Preview
+                                    Container(
+                                      width: 76,
+                                      height: 76,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: const Color(0xFFEEF2FF),
+                                        border: Border.all(color: const Color(0xFF6366F1), width: 2),
+                                      ),
+                                      child: ClipOval(
+                                        child: localPhotoPath != null
+                                            ? Image.file(
+                                                File(localPhotoPath!),
+                                                fit: BoxFit.cover,
+                                                width: 76,
+                                                height: 76,
+                                              )
+                                            : currentAvatar != null && currentAvatar!.isNotEmpty
+                                                ? Image.network(
+                                                    _getAvatarFullUrl(currentAvatar) ?? '',
+                                                    fit: BoxFit.cover,
+                                                    width: 76,
+                                                    height: 76,
+                                                    errorBuilder: (context, error, stackTrace) => const Icon(
+                                                      Icons.groups_rounded,
+                                                      size: 38,
+                                                      color: Color(0xFF6366F1),
+                                                    ),
+                                                  )
+                                                : const Icon(
+                                                    Icons.groups_rounded,
+                                                    size: 38,
+                                                    color: Color(0xFF6366F1),
+                                                  ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+
+                                    // Action buttons for Photo
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        OutlinedButton.icon(
+                                          onPressed: isUploading
+                                              ? null
+                                              : () {
+                                                  FileUploadHelper.showImageSourcePicker(
+                                                    context: modalCtx,
+                                                    title: 'Change Group Photo',
+                                                    onFileSelected: (path, fileName) async {
+                                                      setEditState(() {
+                                                        localPhotoPath = path;
+                                                        isUploading = true;
+                                                      });
+
+                                                      final token = _getToken();
+                                                      final url = await _adminRepo.uploadChatFile(
+                                                        token: token,
+                                                        filePath: path,
+                                                        fileName: fileName,
+                                                      );
+
+                                                      setEditState(() {
+                                                        currentAvatar = url;
+                                                        isUploading = false;
+                                                      });
+                                                    },
+                                                  );
+                                                },
+                                          icon: isUploading
+                                              ? const SizedBox(
+                                                  width: 12,
+                                                  height: 12,
+                                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                                )
+                                              : const Icon(Icons.camera_alt_outlined, size: 14, color: Color(0xFF4F46E5)),
+                                          label: Text(
+                                            isUploading ? 'Uploading...' : 'Change Group Photo',
+                                            style: GoogleFonts.inter(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w600,
+                                              color: const Color(0xFF4F46E5),
+                                            ),
+                                          ),
+                                          style: OutlinedButton.styleFrom(
+                                            side: const BorderSide(color: Color(0xFFC7D2FE)),
+                                            backgroundColor: const Color(0xFFEEF2FF),
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                          ),
+                                        ),
+                                        if (currentAvatar != null || localPhotoPath != null) ...[
+                                          const SizedBox(width: 8),
+                                          OutlinedButton.icon(
+                                            onPressed: () {
+                                              setEditState(() {
+                                                localPhotoPath = null;
+                                                currentAvatar = null;
+                                              });
+                                            },
+                                            icon: const Icon(Icons.delete_outline_rounded, size: 14, color: Color(0xFFEF4444)),
+                                            label: Text(
+                                              'Remove',
+                                              style: GoogleFonts.inter(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600,
+                                                color: const Color(0xFFEF4444),
+                                              ),
+                                            ),
+                                            style: OutlinedButton.styleFrom(
+                                              side: const BorderSide(color: Color(0xFFFECACA)),
+                                              backgroundColor: const Color(0xFFFEF2F2),
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+
+                              // Group Name
+                              Text(
+                                'Group Name',
+                                style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              TextField(
+                                controller: nameCtrl,
+                                style: GoogleFonts.inter(fontSize: 13),
+                                decoration: InputDecoration(
+                                  hintText: 'Enter group name',
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+
+                              // Group Description
+                              Text(
+                                'Group Description',
+                                style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              TextField(
+                                controller: descCtrl,
+                                style: GoogleFonts.inter(fontSize: 13),
+                                decoration: InputDecoration(
+                                  hintText: 'e.g. Discussing project milestones',
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Bottom Buttons: Cancel & Save Changes
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          OutlinedButton(
+                            onPressed: () => Navigator.of(editCtx).pop(),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Color(0xFFE2E8F0)),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            ),
+                            child: Text(
+                              'Cancel',
+                              style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF64748B)),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          ElevatedButton(
+                            onPressed: isSaving
+                                ? null
+                                : () async {
+                                    final newName = nameCtrl.text.trim();
+                                    if (newName.isEmpty) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Please enter a group name'),
+                                          backgroundColor: Color(0xFFEF4444),
+                                        ),
+                                      );
+                                      return;
+                                    }
+
+                                    setEditState(() => isSaving = true);
+                                    final token = _getToken();
+
+                                    try {
+                                      await _adminRepo.updateChatGroup(
+                                        token: token,
+                                        groupId: groupId,
+                                        name: newName,
+                                        description: descCtrl.text.trim(),
+                                        avatar: currentAvatar,
+                                      );
+
+                                      if (mounted) {
+                                        setState(() {
+                                          _selectedChatName = newName;
+                                          _selectedChatSubtitle = descCtrl.text.trim();
+                                          _selectedChatAvatar = currentAvatar;
+
+                                          final idx = _conversations.indexWhere((c) => c['id'] == groupId);
+                                          if (idx != -1) {
+                                            _conversations[idx]['name'] = newName;
+                                            _conversations[idx]['description'] = descCtrl.text.trim();
+                                            _conversations[idx]['avatar'] = currentAvatar;
+                                          }
+                                        });
+
+                                        onUpdated({
+                                          'name': newName,
+                                          'description': descCtrl.text.trim(),
+                                          'avatar': currentAvatar,
+                                        });
+
+                                        if (editCtx.mounted) {
+                                          Navigator.of(editCtx).pop();
+                                        }
+
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Group updated successfully'),
+                                              backgroundColor: Color(0xFF10B981),
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    } catch (e) {
+                                      if (modalCtx.mounted) {
+                                        ScaffoldMessenger.of(modalCtx).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Failed to update group: $e'),
+                                            backgroundColor: const Color(0xFFEF4444),
+                                          ),
+                                        );
+                                      }
+                                    } finally {
+                                      if (modalCtx.mounted) {
+                                        setEditState(() => isSaving = false);
+                                      }
+                                    }
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF6366F1),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                            ),
+                            child: isSaving
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                  )
+                                : Text(
+                                    'Save Changes',
+                                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600),
+                                  ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // =========================================================
+  // ADD MEMBERS TO GROUP DIALOG (Screenshot 4)
+  // =========================================================
+  Future<void> _showAddMembersDialog({
+    required String groupId,
+    required List<dynamic> currentMembers,
+    required VoidCallback onMembersAdded,
+  }) async {
+    final currentIds = currentMembers.map((m) => m['id']?.toString() ?? '').toSet();
+    final availableEmployees = _members.where((m) {
+      final id = m['id']?.toString() ?? '';
+      return id.isNotEmpty && !currentIds.contains(id);
+    }).toList();
+
+    final selectedIds = <String>{};
+    final searchCtrl = TextEditingController();
+    bool isAdding = false;
+
+    await showDialog(
+      context: context,
+      builder: (addCtx) {
+        return StatefulBuilder(
+          builder: (modalCtx, setAddState) {
+            final query = searchCtrl.text.trim().toLowerCase();
+            final filtered = availableEmployees.where((emp) {
+              final name = (emp['name'] as String? ?? '').toLowerCase();
+              final email = (emp['email'] as String? ?? '').toLowerCase();
+              return name.contains(query) || email.contains(query);
+            }).toList();
+
+            final mediaQuery = MediaQuery.of(modalCtx);
+            final dialogWidth = (mediaQuery.size.width * 0.9).clamp(320.0, 440.0);
+
+            return Dialog(
+              backgroundColor: Colors.white,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: dialogWidth,
+                  maxHeight: mediaQuery.size.height * 0.85,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Add Members to Group',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, size: 20, color: Color(0xFF94A3B8)),
+                            onPressed: () => Navigator.of(addCtx).pop(),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
+                        ],
+                      ),
+                      const Divider(height: 20, color: Color(0xFFF1F5F9)),
+
+                      // Title
+                      Text(
+                        'Select Employees to Add',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+
+                      // Search Input
+                      TextField(
+                        controller: searchCtrl,
+                        onChanged: (_) => setAddState(() {}),
+                        style: GoogleFonts.inter(fontSize: 12),
+                        decoration: InputDecoration(
+                          hintText: 'Search employee by name or email...',
+                          prefixIcon: const Icon(Icons.search_rounded, size: 16, color: Color(0xFF94A3B8)),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          isDense: true,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Employees list with checkboxes
+                      Flexible(
+                        child: filtered.isEmpty
+                            ? Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(24),
+                                  child: Text(
+                                    availableEmployees.isEmpty
+                                        ? 'All employees are already in this group.'
+                                        : 'No employees found matching search.',
+                                    textAlign: TextAlign.center,
+                                    style: GoogleFonts.inter(fontSize: 12, color: AppColors.textSecondary),
+                                  ),
+                                ),
+                              )
+                            : Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                                ),
+                                child: ListView.separated(
+                                  shrinkWrap: true,
+                                  itemCount: filtered.length,
+                                  separatorBuilder: (context, index) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                                  itemBuilder: (ctx, idx) {
+                                    final emp = filtered[idx];
+                                    final id = emp['id'] as String? ?? '';
+                                    final name = emp['name'] as String? ?? 'Employee';
+                                    final email = emp['email'] as String? ?? '';
+                                    final avatar = emp['avatar'] as String?;
+                                    final initial = name.isNotEmpty ? name[0].toUpperCase() : 'E';
+                                    final isChecked = selectedIds.contains(id);
+
+                                    return InkWell(
+                                      onTap: () {
+                                        setAddState(() {
+                                          if (isChecked) {
+                                            selectedIds.remove(id);
+                                          } else {
+                                            selectedIds.add(id);
+                                          }
+                                        });
+                                      },
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                        child: Row(
+                                          children: [
+                                            SizedBox(
+                                              width: 24,
+                                              height: 24,
+                                              child: Checkbox(
+                                                value: isChecked,
+                                                activeColor: const Color(0xFF6366F1),
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                                onChanged: (val) {
+                                                  setAddState(() {
+                                                    if (val == true) {
+                                                      selectedIds.add(id);
+                                                    } else {
+                                                      selectedIds.remove(id);
+                                                    }
+                                                  });
+                                                },
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            _buildAvatarWidget(avatar, initial, isGroup: false, radius: 16),
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    name,
+                                                    style: GoogleFonts.inter(
+                                                      fontSize: 12,
+                                                      fontWeight: FontWeight.w700,
+                                                      color: AppColors.textPrimary,
+                                                    ),
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                  if (email.isNotEmpty)
+                                                    Text(
+                                                      email,
+                                                      style: GoogleFonts.inter(
+                                                        fontSize: 11,
+                                                        color: const Color(0xFF64748B),
+                                                      ),
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Bottom Buttons: Cancel & Add Selected Members
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          OutlinedButton(
+                            onPressed: () => Navigator.of(addCtx).pop(),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Color(0xFFE2E8F0)),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            ),
+                            child: Text(
+                              'Cancel',
+                              style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF64748B)),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          ElevatedButton(
+                            onPressed: (selectedIds.isEmpty || isAdding)
+                                ? null
+                                : () async {
+                                    setAddState(() => isAdding = true);
+                                    final token = _getToken();
+
+                                    try {
+                                      await _adminRepo.addGroupMembers(
+                                        token: token,
+                                        groupId: groupId,
+                                        memberIds: selectedIds.toList(),
+                                      );
+
+                                      if (addCtx.mounted) {
+                                        Navigator.of(addCtx).pop();
+                                      }
+
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Members added to group successfully'),
+                                            backgroundColor: Color(0xFF10B981),
+                                          ),
+                                        );
+                                        onMembersAdded();
+                                        _loadChatData();
+                                      }
+                                    } catch (e) {
+                                      if (modalCtx.mounted) {
+                                        ScaffoldMessenger.of(modalCtx).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Failed to add members: $e'),
+                                            backgroundColor: const Color(0xFFEF4444),
+                                          ),
+                                        );
+                                      }
+                                    } finally {
+                                      if (modalCtx.mounted) {
+                                        setAddState(() => isAdding = false);
+                                      }
+                                    }
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF6366F1),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                            ),
+                            child: isAdding
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                  )
+                                : Text(
+                                    'Add Selected Members (${selectedIds.length})',
+                                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600),
+                                  ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // =========================================================
+  // CONFIRMATION POPUPS
+  // =========================================================
+  Future<void> _confirmRemoveMember({
+    required BuildContext parentDialogContext,
+    required String groupId,
+    required String memberId,
+    required String memberName,
+    required VoidCallback onRemoved,
+  }) async {
+    final shouldRemove = await showDialog<bool>(
+      context: parentDialogContext,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Remove Member',
+          style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, fontSize: 16),
+        ),
+        content: Text(
+          'Are you sure you want to remove $memberName from this group?',
+          style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: const Color(0xFF64748B)),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldRemove == true) {
+      final token = _getToken();
+      try {
+        await _adminRepo.removeGroupMember(token: token, groupId: groupId, memberId: memberId);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('$memberName removed from group'),
+              backgroundColor: const Color(0xFF10B981),
+            ),
+          );
+        }
+        onRemoved();
+        _loadChatData();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to remove member: $e'),
+              backgroundColor: const Color(0xFFEF4444),
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _confirmDeleteGroup({
+    required BuildContext parentDialogContext,
+    required String groupId,
+    required String groupName,
+  }) async {
+    final shouldDelete = await showDialog<bool>(
+      context: parentDialogContext,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Delete Group',
+          style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, fontSize: 16),
+        ),
+        content: Text(
+          'Are you sure you want to delete \'$groupName\'? All messages and group data will be permanently deleted. This action cannot be undone.',
+          style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: const Color(0xFF64748B)),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldDelete == true) {
+      final token = _getToken();
+      try {
+        await _adminRepo.deleteChatGroup(token: token, groupId: groupId);
+        if (parentDialogContext.mounted) {
+          Navigator.of(parentDialogContext).pop(); // Close Group Info modal
+        }
+        if (mounted) {
+          setState(() {
+            _selectedConversationId = null;
+            _selectedChatName = null;
+            _selectedChatAvatar = null;
+            _selectedChatSubtitle = null;
+            _selectedChatIsGroup = false;
+            _currentMessages = [];
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Group deleted successfully'),
+              backgroundColor: Color(0xFF10B981),
+            ),
+          );
+          _loadChatData();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to delete group: $e'),
+              backgroundColor: const Color(0xFFEF4444),
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _confirmLeaveGroup({
+    required BuildContext parentDialogContext,
+    required String groupId,
+    required String groupName,
+    required List<Map<String, dynamic>> members,
+  }) async {
+    final currentUserId = _getCurrentUserId();
+    // Candidates to assign as new admin (all other members in the group)
+    final otherMembers = members.where((m) => (m['id']?.toString() ?? '') != currentUserId).toList();
+    String? selectedAdminId = otherMembers.isNotEmpty ? otherMembers.first['id']?.toString() : null;
+
+    final shouldLeave = await showDialog<bool>(
+      context: parentDialogContext,
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) {
+          final mediaQuery = MediaQuery.of(dialogCtx);
+          final dialogWidth = (mediaQuery.size.width * 0.9).clamp(320.0, 400.0);
+
+          return Dialog(
+            backgroundColor: Colors.white,
+            insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: dialogWidth),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Amber banner with exit icon (Screenshot 3)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEF3C7),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.exit_to_app_rounded,
+                        color: Color(0xFFD97706),
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Title
+                    Text(
+                      'Leave Group?',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+
+                    // Subtitle
+                    Text(
+                      'You will no longer receive messages from this group.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: const Color(0xFF64748B),
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Assign New Group Admin Container
+                    if (otherMembers.isNotEmpty) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Assign New Group Admin Before Leaving:',
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFF334155),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: const Color(0xFF0F172A), width: 1.2),
+                              ),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  value: selectedAdminId,
+                                  isExpanded: true,
+                                  icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF0F172A)),
+                                  items: otherMembers.map((m) {
+                                    final id = m['id']?.toString() ?? '';
+                                    final name = m['name'] as String? ?? 'Member';
+                                    final role = m['role'] as String? ?? 'employee';
+                                    return DropdownMenuItem<String>(
+                                      value: id,
+                                      child: Text(
+                                        '$name ($role)',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.textPrimary,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    );
+                                  }).toList(),
+                                  onChanged: (val) {
+                                    if (val != null) {
+                                      setDialogState(() => selectedAdminId = val);
+                                    }
+                                  },
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+
+                    // Action buttons: Cancel & Leave
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.of(ctx).pop(false),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Color(0xFFE2E8F0)),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            child: Text(
+                              'Cancel',
+                              style: GoogleFonts.inter(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: const Color(0xFF334155),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () => Navigator.of(ctx).pop(true),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFEF4444),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              elevation: 0,
+                            ),
+                            child: Text(
+                              'Leave',
+                              style: GoogleFonts.inter(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    if (shouldLeave == true) {
+      final token = _getToken();
+      try {
+        await _adminRepo.leaveChatGroup(
+          token: token,
+          groupId: groupId,
+          newAdminId: selectedAdminId,
+        );
+        if (parentDialogContext.mounted) {
+          Navigator.of(parentDialogContext).pop(); // Close Group Info modal
+        }
+        if (mounted) {
+          setState(() {
+            _selectedConversationId = null;
+            _selectedChatName = null;
+            _selectedChatAvatar = null;
+            _selectedChatSubtitle = null;
+            _selectedChatIsGroup = false;
+            _currentMessages = [];
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Left group successfully'),
+              backgroundColor: Color(0xFF10B981),
+            ),
+          );
+          _loadChatData();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to leave group: $e'),
+              backgroundColor: const Color(0xFFEF4444),
+            ),
+          );
+        }
+      }
+    }
+  }
+
   String _formatTime(dynamic raw) {
     if (raw == null) return '';
     final str = raw.toString();
@@ -1127,19 +2910,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildAvatarWidget(String? avatar, String fallbackInitial, {required bool isGroup, double radius = 18}) {
-    String? fullUrl;
-    if (avatar != null && avatar.trim().isNotEmpty) {
-      final trimmed = avatar.trim();
-      if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-        fullUrl = trimmed;
-      } else if (trimmed.startsWith('/api/v1/')) {
-        fullUrl = 'https://employee-management.srivagroups.in$trimmed';
-      } else if (trimmed.startsWith('/')) {
-        fullUrl = 'https://employee-management.srivagroups.in$trimmed';
-      } else {
-        fullUrl = 'https://employee-management.srivagroups.in/$trimmed';
-      }
-    }
+    final fullUrl = _getAvatarFullUrl(avatar);
 
     if (fullUrl != null) {
       return Container(
@@ -1291,24 +3062,35 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      style: GoogleFonts.plusJakartaSans(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                    ),
-                    Text(
-                      _selectedIsOnline ? 'Active Now • $subtitle' : subtitle,
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        color: _selectedIsOnline ? const Color(0xFF10B981) : AppColors.textSecondary,
-                        fontWeight: _selectedIsOnline ? FontWeight.w600 : FontWeight.w400,
+                child: InkWell(
+                  onTap: _selectedChatIsGroup ? () => _showGroupInfoDialog() : null,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: GoogleFonts.plusJakartaSans(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
                       ),
-                    ),
-                  ],
+                      Text(
+                        _selectedIsOnline ? 'Active Now • $subtitle' : subtitle,
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          color: _selectedIsOnline ? const Color(0xFF10B981) : AppColors.textSecondary,
+                          fontWeight: _selectedIsOnline ? FontWeight.w600 : FontWeight.w400,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
+              if (_selectedChatIsGroup) ...[
+                IconButton(
+                  icon: const Icon(Icons.info_outline_rounded, size: 22, color: Color(0xFF64748B)),
+                  onPressed: () => _showGroupInfoDialog(),
+                  tooltip: 'Group Information',
+                ),
+              ],
               IconButton(
                 icon: const Icon(Icons.refresh_rounded, size: 20, color: Color(0xFF64748B)),
                 onPressed: () {

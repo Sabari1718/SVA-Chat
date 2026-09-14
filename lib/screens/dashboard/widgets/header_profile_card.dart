@@ -5,11 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../bloc/auth/auth_bloc.dart';
 import '../../../bloc/auth/auth_state.dart';
 import '../../../bloc/tracker/shift_tracker_bloc.dart';
-import '../../../bloc/tracker/shift_tracker_event.dart';
 import '../../../bloc/tracker/shift_tracker_state.dart';
-import '../../../bloc/attendance/attendance_bloc.dart';
-import '../../../bloc/attendance/attendance_event.dart';
-import '../../../models/session_model.dart';
 import '../../../core/theme/app_colors.dart';
 
 class HeaderProfileCard extends StatelessWidget {
