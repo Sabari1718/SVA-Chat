@@ -20,16 +20,11 @@ class _PayslipScreenState extends State<PayslipScreen> {
 
   int _selectedOption = 0; // 0: Option 1 - Single Page Payslip, 1: Option 2 - Monthly Separate Payslips
 
-  // Employee & Period Selection
-  String _selectedEmployee = 'Sabarishwaran (EMP-9824)';
-  final List<String> _employeeList = [
-    '-- Choose Employee --',
-    'Sabarishwaran (EMP-9824)',
-    'Krishna (EMP-8412)',
-    'Lohit (EMP-7321)',
-    'Dhanush (EMP-9021)',
-    'Kavin (EMP-1024)',
-  ];
+  // Live Employees & Period Selection
+  final List<Map<String, dynamic>> _liveEmployees = [];
+  String? _selectedEmployeeId;
+  Map<String, dynamic>? _selectedEmployeeMap;
+
   String _payPeriodType = 'Monthly (1 Month)';
   String _payMonth = 'August';
   final List<String> _monthList = [
@@ -82,8 +77,10 @@ class _PayslipScreenState extends State<PayslipScreen> {
   final _bankNameController = TextEditingController(text: 'HDFC Bank');
   final _accountNumberController = TextEditingController(text: '•••••••• 1234');
 
-  // Option 2 Filter
+  // Option 2 Filters & Search
   final _filterController = TextEditingController();
+  String _filterMonth = 'All Months';
+  String _filterYear = 'All Years';
 
   // Company Details & Signature Controllers (Screenshots 1 & 2)
   final _companyLogoUrlController = TextEditingController();
@@ -116,17 +113,58 @@ class _PayslipScreenState extends State<PayslipScreen> {
     return '';
   }
 
+  /// Fetches live employees, payslips, sends heartbeat, and checks unread chat
   Future<void> _loadData() async {
     final token = _getToken();
     if (token.isEmpty) return;
 
     setState(() => _isLoading = true);
     try {
-      final payslips = await _adminRepo.getPayslips(token);
+      final authState = context.read<AuthBloc>().state;
+      final currentUser = authState is AuthenticatedState ? authState.user : null;
+      final isEmployee = currentUser != null && !currentUser.isAdmin;
+
+      // 4 Live APIs requested when accessing Payslip module:
+      // 1. GET /api/v1/employees
+      // 2. GET /api/v1/payslips
+      // 3. POST /api/v1/employee/session/heartbeat
+      // 4. GET /api/v1/chat/unread
+      final results = await Future.wait([
+        _adminRepo.getEmployees(token),
+        _adminRepo.getPayslips(
+          token,
+          employeeId: isEmployee ? currentUser.id : null,
+        ),
+        _adminRepo.sendHeartbeat(token),
+        _adminRepo.getChatUnreadSummary(token),
+      ]);
+
+      final employees = results[0] as List<Map<String, dynamic>>;
+      final payslips = results[1] as List<Map<String, dynamic>>;
+
       if (mounted) {
         setState(() {
+          _liveEmployees.clear();
+          _liveEmployees.addAll(employees);
+
           _generatedPayslips.clear();
           _generatedPayslips.addAll(payslips);
+
+          if (isEmployee) {
+            _selectedEmployeeId = currentUser.id;
+            _selectedEmployeeMap = _liveEmployees.firstWhere(
+              (e) => e['id']?.toString() == currentUser.id,
+              orElse: () => {
+                'id': currentUser.id,
+                'name': currentUser.name,
+                'department': currentUser.department,
+              },
+            );
+            _selectedOption = 1; // Default to Option 2 list for employee
+          } else if (_selectedEmployeeId == null && _liveEmployees.isNotEmpty) {
+            _selectedEmployeeId = _liveEmployees.first['id']?.toString();
+            _selectedEmployeeMap = _liveEmployees.first;
+          }
         });
       }
     } catch (e) {
@@ -136,6 +174,96 @@ class _PayslipScreenState extends State<PayslipScreen> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  // --- Helper Getters for Payslip Card Display ---
+  String _getPayslipEmployeeName(Map<String, dynamic> p) {
+    if (p['employeeName'] != null && p['employeeName'].toString().isNotEmpty) {
+      return p['employeeName'].toString();
+    }
+    if (p['employee'] is Map && p['employee']['name'] != null) {
+      return p['employee']['name'].toString();
+    }
+    if (p['employee'] != null && p['employee'].toString().isNotEmpty) {
+      return p['employee'].toString();
+    }
+    final empId = p['employeeId']?.toString() ?? '';
+    if (empId.isNotEmpty) {
+      final match = _liveEmployees.firstWhere(
+        (e) => e['id']?.toString() == empId,
+        orElse: () => {},
+      );
+      if (match.isNotEmpty && match['name'] != null) {
+        return match['name'].toString();
+      }
+      return empId;
+    }
+    return 'Employee';
+  }
+
+  String _getPayslipPeriod(Map<String, dynamic> p) {
+    final month = p['payMonth']?.toString() ?? '';
+    final year = p['payYear']?.toString() ?? '';
+    if (month.isNotEmpty || year.isNotEmpty) {
+      return '$month $year'.trim();
+    }
+    return p['monthYear']?.toString() ?? '-';
+  }
+
+  String _getPayslipDate(Map<String, dynamic> p) {
+    if (p['payment'] is Map && p['payment']['paymentDate'] != null) {
+      return p['payment']['paymentDate'].toString();
+    }
+    if (p['paymentDate'] != null) return p['paymentDate'].toString();
+    if (p['date'] != null) return p['date'].toString();
+    if (p['createdAt'] != null) {
+      return p['createdAt'].toString().split('T').first;
+    }
+    return '-';
+  }
+
+  num _getPayslipNetSalary(Map<String, dynamic> p) {
+    if (p['netSalary'] != null) {
+      return (p['netSalary'] as num?) ?? 0;
+    }
+    if (p['net'] != null) {
+      return (p['net'] as num?) ?? 0;
+    }
+    return 0;
+  }
+
+  String _getPayslipId(Map<String, dynamic> p) {
+    return p['payslipId']?.toString() ?? p['id']?.toString() ?? 'PAY';
+  }
+
+  List<Map<String, dynamic>> get _filteredPayslips {
+    final query = _filterController.text.trim().toLowerCase();
+    return _generatedPayslips.where((p) {
+      if (_filterMonth != 'All Months' && _filterMonth != 'All Months / Period') {
+        final m = p['payMonth']?.toString() ?? '';
+        final my = p['monthYear']?.toString() ?? '';
+        if (!m.toLowerCase().contains(_filterMonth.toLowerCase()) &&
+            !my.toLowerCase().contains(_filterMonth.toLowerCase())) {
+          return false;
+        }
+      }
+      if (_filterYear != 'All Years') {
+        final y = p['payYear']?.toString() ?? '';
+        final my = p['monthYear']?.toString() ?? '';
+        if (!y.contains(_filterYear) && !my.contains(_filterYear)) {
+          return false;
+        }
+      }
+      if (query.isNotEmpty) {
+        final empName = _getPayslipEmployeeName(p).toLowerCase();
+        final empId = (p['employeeId']?.toString() ?? '').toLowerCase();
+        final code = _getPayslipId(p).toLowerCase();
+        if (!empName.contains(query) && !empId.contains(query) && !code.contains(query)) {
+          return false;
+        }
+      }
+      return true;
+    }).toList();
   }
 
   @override
@@ -250,7 +378,7 @@ class _PayslipScreenState extends State<PayslipScreen> {
   }
 
   Future<void> _generatePayslip() async {
-    if (_selectedEmployee == '-- Choose Employee --') {
+    if (_selectedEmployeeId == null || _selectedEmployeeId!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select an employee')),
       );
@@ -260,14 +388,49 @@ class _PayslipScreenState extends State<PayslipScreen> {
     final token = _getToken();
     if (token.isEmpty) return;
 
+    final empName = _selectedEmployeeMap?['name']?.toString() ?? 'Employee';
+    final dept = _selectedEmployeeMap?['department']?.toString() ?? 'General';
+
     final newPayslip = {
-      'employee': _selectedEmployee,
-      'monthYear': '$_payMonth ${_payYearController.text}',
+      'employeeId': _selectedEmployeeId,
+      'employeeName': empName,
+      'department': dept,
+      'payMonth': _payMonth,
+      'payYear': _payYearController.text.trim(),
+      'payPeriodType': _payPeriodType,
+      'earnings': {
+        'basic': _basicSalaryEnabled ? _parseVal(_basicSalaryController) : 0,
+        'hra': _hraEnabled ? _parseVal(_hraController) : 0,
+        'conveyance': _conveyanceEnabled ? _parseVal(_conveyanceController) : 0,
+        'medical': _medicalEnabled ? _parseVal(_medicalController) : 0,
+        'special': _specialEnabled ? _parseVal(_specialController) : 0,
+        'otherAllowance': _otherAllowanceEnabled ? _parseVal(_otherAllowanceController) : 0,
+        'bonus': _bonusEnabled ? _parseVal(_bonusController) : 0,
+        'overtime': _overtimeEnabled ? _parseVal(_overtimeController) : 0,
+      },
+      'deductions': {
+        'pf': _pfEnabled ? _parseVal(_pfController) : 0,
+        'esi': _esiEnabled ? _parseVal(_esiController) : 0,
+        'profTax': _profTaxEnabled ? _parseVal(_profTaxController) : 0,
+        'tds': _tdsEnabled ? _parseVal(_tdsController) : 0,
+        'loan': _loanEnabled ? _parseVal(_loanController) : 0,
+        'advance': _advanceEnabled ? _parseVal(_advanceController) : 0,
+        'otherDeduction': _otherDeductionEnabled ? _parseVal(_otherDeductionController) : 0,
+      },
+      'payment': {
+        'mode': _paymentMode,
+        'paymentDate': _paymentDateController.text.trim(),
+        'bankName': _bankNameController.text.trim(),
+        'accountNumber': _accountNumberController.text.trim(),
+      },
+      'status': 'Generated',
+      // Legacy compatibility keys
+      'employee': '$empName (${_selectedEmployeeId ?? ''})',
+      'monthYear': '$_payMonth ${_payYearController.text.trim()}',
       'gross': _totalGrossEarnings,
-      'deductions': _totalDeductions,
       'net': _netSalary,
-      'bank': _bankNameController.text,
-      'date': _paymentDateController.text,
+      'bank': _bankNameController.text.trim(),
+      'date': _paymentDateController.text.trim(),
     };
 
     setState(() => _isLoading = true);
@@ -296,6 +459,76 @@ class _PayslipScreenState extends State<PayslipScreen> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  void _confirmDeletePayslip(Map<String, dynamic> payslip) {
+    final slipId = payslip['id']?.toString() ?? payslip['payslipId']?.toString() ?? '';
+    final code = _getPayslipId(payslip);
+    final empName = _getPayslipEmployeeName(payslip);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Color(0xFFEF4444), size: 22),
+            const SizedBox(width: 8),
+            Text('Delete Payslip', style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 16)),
+          ],
+        ),
+        content: Text(
+          'Are you sure you want to delete payslip $code for $empName? This action cannot be undone.',
+          style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF475569)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text('Cancel', style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              final token = _getToken();
+              if (token.isEmpty || slipId.isEmpty) return;
+              setState(() => _isLoading = true);
+              try {
+                await _adminRepo.deletePayslip(token, slipId);
+                setState(() {
+                  _generatedPayslips.removeWhere((p) =>
+                      p['id']?.toString() == slipId || p['payslipId']?.toString() == slipId);
+                });
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Payslip $code deleted successfully'),
+                      backgroundColor: const Color(0xFF0F172A),
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Failed to delete payslip: $e'), backgroundColor: Colors.red),
+                  );
+                }
+              } finally {
+                if (mounted) {
+                  setState(() => _isLoading = false);
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showCompanyDetailsDialog() {
@@ -1044,6 +1277,7 @@ class _PayslipScreenState extends State<PayslipScreen> {
                                       flex: 2,
                                       child: TextField(
                                         controller: _filterController,
+                                        onChanged: (_) => setState(() {}),
                                         decoration: const InputDecoration(
                                           hintText: 'Filter by Employee Name, Code, or Payslip ID...',
                                           prefixIcon: Icon(Icons.search_rounded, size: 18),
@@ -1052,9 +1286,9 @@ class _PayslipScreenState extends State<PayslipScreen> {
                                       ),
                                     ),
                                     const SizedBox(width: 12),
-                                    Expanded(child: _buildFilterDropdown('All Months / Period')),
+                                    Expanded(child: _buildMonthFilterDropdown()),
                                     const SizedBox(width: 12),
-                                    Expanded(child: _buildFilterDropdown('All Years')),
+                                    Expanded(child: _buildYearFilterDropdown()),
                                   ],
                                 );
                               } else {
@@ -1062,6 +1296,7 @@ class _PayslipScreenState extends State<PayslipScreen> {
                                   children: [
                                     TextField(
                                       controller: _filterController,
+                                      onChanged: (_) => setState(() {}),
                                       decoration: const InputDecoration(
                                         hintText: 'Filter by Employee, Code, or ID...',
                                         prefixIcon: Icon(Icons.search_rounded, size: 18),
@@ -1071,9 +1306,9 @@ class _PayslipScreenState extends State<PayslipScreen> {
                                     const SizedBox(height: 10),
                                     Row(
                                       children: [
-                                        Expanded(child: _buildFilterDropdown('All Months')),
+                                        Expanded(child: _buildMonthFilterDropdown()),
                                         const SizedBox(width: 10),
-                                        Expanded(child: _buildFilterDropdown('All Years')),
+                                        Expanded(child: _buildYearFilterDropdown()),
                                       ],
                                     ),
                                   ],
@@ -1084,188 +1319,257 @@ class _PayslipScreenState extends State<PayslipScreen> {
                           const SizedBox(height: 24),
 
                           // Empty state or generated list matching Screenshot 4
-                          if (_generatedPayslips.isEmpty)
-                            Center(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 40),
-                                child: Column(
-                                  children: [
-                                    Container(
-                                      width: 60,
-                                      height: 60,
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFF1F5F9),
-                                        borderRadius: BorderRadius.circular(16),
-                                      ),
-                                      child: const Icon(
-                                        Icons.description_outlined,
-                                        size: 30,
-                                        color: Color(0xFF94A3B8),
-                                      ),
+                          Builder(
+                            builder: (context) {
+                              final displayList = _filteredPayslips;
+                              if (displayList.isEmpty) {
+                                return Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 40),
+                                    child: Column(
+                                      children: [
+                                        Container(
+                                          width: 60,
+                                          height: 60,
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFF1F5F9),
+                                            borderRadius: BorderRadius.circular(16),
+                                          ),
+                                          child: const Icon(
+                                            Icons.description_outlined,
+                                            size: 30,
+                                            color: Color(0xFF94A3B8),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 14),
+                                        Text(
+                                          'No monthly payslips found matching the filter criteria.',
+                                          style: GoogleFonts.inter(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w700,
+                                            color: AppColors.textPrimary,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'No monthly payslips match. Generate a payslip in Option 1 to save it here, or adjust filters.',
+                                          style: GoogleFonts.inter(fontSize: 12, color: AppColors.textSecondary),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                        const SizedBox(height: 18),
+                                        ElevatedButton.icon(
+                                          onPressed: () => setState(() => _selectedOption = 0),
+                                          icon: const Icon(Icons.add_rounded, size: 16, color: Colors.white),
+                                          label: const Text('Generate New Payslip'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: const Color(0xFF4F46E5),
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    const SizedBox(height: 14),
-                                    Text(
-                                      'No monthly payslips found matching the filter criteria.',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.textPrimary,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'No monthly payslips have been created yet. Generate a payslip in Option 1 to save it here.',
-                                      style: GoogleFonts.inter(fontSize: 12, color: AppColors.textSecondary),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                    const SizedBox(height: 18),
-                                    ElevatedButton.icon(
-                                      onPressed: () => setState(() => _selectedOption = 0),
-                                      icon: const Icon(Icons.add_rounded, size: 16, color: Colors.white),
-                                      label: const Text('Generate New Payslip'),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFF4F46E5),
-                                        foregroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            )
-                          else
-                            ListView.separated(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: _generatedPayslips.length,
-                              separatorBuilder: (context, index) => const SizedBox(height: 12),
-                              itemBuilder: (context, index) {
-                                final p = _generatedPayslips[index];
-                                return Container(
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF8FAFC),
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(color: const Color(0xFFE2E8F0)),
                                   ),
-                                  child: LayoutBuilder(
-                                    builder: (context, itemConstraints) {
-                                      final isCompact = itemConstraints.maxWidth < 460;
-                                      if (isCompact) {
-                                        return Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                );
+                              }
+
+                              return ListView.separated(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: displayList.length,
+                                separatorBuilder: (context, index) => const SizedBox(height: 12),
+                                itemBuilder: (context, index) {
+                                  final p = displayList[index];
+                                  final empName = _getPayslipEmployeeName(p);
+                                  final netAmount = _getPayslipNetSalary(p);
+                                  final period = _getPayslipPeriod(p);
+                                  final date = _getPayslipDate(p);
+                                  final slipCode = _getPayslipId(p);
+
+                                  return Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF8FAFC),
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                                    ),
+                                    child: LayoutBuilder(
+                                      builder: (context, itemConstraints) {
+                                        final isCompact = itemConstraints.maxWidth < 460;
+                                        if (isCompact) {
+                                          return Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  Expanded(
+                                                    child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      children: [
+                                                        Text(
+                                                          empName,
+                                                          style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700),
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow.ellipsis,
+                                                        ),
+                                                        if (slipCode.isNotEmpty)
+                                                          Text(
+                                                            slipCode,
+                                                            style: GoogleFonts.jetBrainsMono(
+                                                              fontSize: 10,
+                                                              color: const Color(0xFF64748B),
+                                                              fontWeight: FontWeight.w600,
+                                                            ),
+                                                          ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Text(
+                                                    '₹ $netAmount',
+                                                    style: GoogleFonts.inter(
+                                                      fontSize: 15,
+                                                      fontWeight: FontWeight.w800,
+                                                      color: const Color(0xFF10B981),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 6),
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  Expanded(
+                                                    child: Text(
+                                                      'Period: $period • Date: $date',
+                                                      style: GoogleFonts.inter(fontSize: 11, color: AppColors.textSecondary),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      OutlinedButton.icon(
+                                                        onPressed: () {
+                                                          ScaffoldMessenger.of(context).showSnackBar(
+                                                            SnackBar(content: Text('Downloading PDF for $slipCode...')),
+                                                          );
+                                                        },
+                                                        icon: const Icon(Icons.download_rounded, size: 12),
+                                                        label: const Text('PDF'),
+                                                        style: OutlinedButton.styleFrom(
+                                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                          minimumSize: Size.zero,
+                                                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 4),
+                                                      IconButton(
+                                                        onPressed: () => _confirmDeletePayslip(p),
+                                                        icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Color(0xFFEF4444)),
+                                                        padding: EdgeInsets.zero,
+                                                        constraints: const BoxConstraints(),
+                                                        tooltip: 'Delete Payslip',
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          );
+                                        }
+
+                                        return Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                           children: [
-                                            Row(
-                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                              children: [
-                                                Expanded(
-                                                  child: Text(
-                                                    p['employee'],
-                                                    style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Row(
+                                                    children: [
+                                                      Flexible(
+                                                        child: Text(
+                                                          empName,
+                                                          style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700),
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow.ellipsis,
+                                                        ),
+                                                      ),
+                                                      if (slipCode.isNotEmpty) ...[
+                                                        const SizedBox(width: 8),
+                                                        Container(
+                                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                          decoration: BoxDecoration(
+                                                            color: const Color(0xFFEEF2FF),
+                                                            borderRadius: BorderRadius.circular(6),
+                                                          ),
+                                                          child: Text(
+                                                            slipCode,
+                                                            style: GoogleFonts.jetBrainsMono(
+                                                              fontSize: 10,
+                                                              fontWeight: FontWeight.w600,
+                                                              color: const Color(0xFF4F46E5),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 2),
+                                                  Text(
+                                                    'Period: $period • Date: $date',
+                                                    style: GoogleFonts.inter(fontSize: 12, color: AppColors.textSecondary),
                                                     maxLines: 1,
                                                     overflow: TextOverflow.ellipsis,
                                                   ),
-                                                ),
-                                                const SizedBox(width: 8),
-                                                Text(
-                                                  '₹ ${p['net']}',
-                                                  style: GoogleFonts.inter(
-                                                    fontSize: 15,
-                                                    fontWeight: FontWeight.w800,
-                                                    color: const Color(0xFF10B981),
-                                                  ),
-                                                ),
-                                              ],
+                                                ],
+                                              ),
                                             ),
-                                            const SizedBox(height: 6),
+                                            const SizedBox(width: 12),
                                             Row(
-                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                              mainAxisSize: MainAxisSize.min,
                                               children: [
-                                                Expanded(
-                                                  child: Text(
-                                                    'Period: ${p['monthYear']} • Date: ${p['date']}',
-                                                    style: GoogleFonts.inter(fontSize: 11, color: AppColors.textSecondary),
-                                                    maxLines: 1,
-                                                    overflow: TextOverflow.ellipsis,
-                                                  ),
+                                                Text(
+                                                  '₹ $netAmount',
+                                                  style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w800, color: const Color(0xFF10B981)),
                                                 ),
-                                                const SizedBox(width: 8),
+                                                const SizedBox(width: 12),
                                                 OutlinedButton.icon(
                                                   onPressed: () {
                                                     ScaffoldMessenger.of(context).showSnackBar(
-                                                      SnackBar(content: Text('Downloading PDF for ${p['id']}...')),
+                                                      SnackBar(content: Text('Downloading PDF for $slipCode...')),
                                                     );
                                                   },
-                                                  icon: const Icon(Icons.download_rounded, size: 13),
+                                                  icon: const Icon(Icons.download_rounded, size: 14),
                                                   label: const Text('PDF'),
                                                   style: OutlinedButton.styleFrom(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                                     minimumSize: Size.zero,
                                                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                                   ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                IconButton(
+                                                  onPressed: () => _confirmDeletePayslip(p),
+                                                  icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFEF4444)),
+                                                  tooltip: 'Delete Payslip',
                                                 ),
                                               ],
                                             ),
                                           ],
                                         );
-                                      }
-
-                                      return Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  p['employee'],
-                                                  style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                                const SizedBox(height: 2),
-                                                Text(
-                                                  'Period: ${p['monthYear']} • Date: ${p['date']}',
-                                                  style: GoogleFonts.inter(fontSize: 12, color: AppColors.textSecondary),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          const SizedBox(width: 12),
-                                          Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Text(
-                                                '₹ ${p['net']}',
-                                                style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w800, color: const Color(0xFF10B981)),
-                                              ),
-                                              const SizedBox(width: 12),
-                                              OutlinedButton.icon(
-                                                onPressed: () {
-                                                  ScaffoldMessenger.of(context).showSnackBar(
-                                                    SnackBar(content: Text('Downloading PDF for ${p['id']}...')),
-                                                  );
-                                                },
-                                                icon: const Icon(Icons.download_rounded, size: 14),
-                                                label: const Text('PDF'),
-                                                style: OutlinedButton.styleFrom(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                                  minimumSize: Size.zero,
-                                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                      );
-                                    },
-                                  ),
-                                );
-                              },
-                            ),
+                                      },
+                                    ),
+                                  );
+                                },
+                              );
+                            },
+                          ),
                         ],
                       ),
                     ),
@@ -1287,6 +1591,16 @@ class _PayslipScreenState extends State<PayslipScreen> {
       spacing: 8,
       runSpacing: 8,
       children: [
+        OutlinedButton.icon(
+          onPressed: _loadData,
+          icon: const Icon(Icons.sync_rounded, size: 16),
+          label: const Text('Refresh'),
+          style: OutlinedButton.styleFrom(
+            side: const BorderSide(color: Color(0xFFE2E8F0)),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        ),
         OutlinedButton.icon(
           onPressed: _showCompanyDetailsDialog,
           icon: const Icon(Icons.business_outlined, size: 16),
@@ -1714,6 +2028,10 @@ class _PayslipScreenState extends State<PayslipScreen> {
   }
 
   Widget _buildEmployeeDropdown() {
+    final hasMatch = _selectedEmployeeId != null &&
+        _liveEmployees.any((e) => e['id']?.toString() == _selectedEmployeeId);
+    final currentValue = hasMatch ? _selectedEmployeeId : null;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1727,13 +2045,45 @@ class _PayslipScreenState extends State<PayslipScreen> {
             border: Border.all(color: const Color(0xFFE2E8F0)),
           ),
           child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: _selectedEmployee,
+            child: DropdownButton<String?>(
+              value: currentValue,
               isExpanded: true,
+              hint: Text('-- Choose Employee --',
+                  style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF94A3B8))),
               icon: const Icon(Icons.keyboard_arrow_down_rounded),
-              items: _employeeList.map((e) => DropdownMenuItem(value: e, child: Text(e, style: GoogleFonts.inter(fontSize: 12), overflow: TextOverflow.ellipsis))).toList(),
+              items: [
+                DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('-- Choose Employee --',
+                      style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF64748B))),
+                ),
+                ..._liveEmployees.map((emp) {
+                  final id = emp['id']?.toString() ?? '';
+                  final name = emp['name']?.toString() ?? 'Employee';
+                  final dept = emp['department']?.toString() ?? '';
+                  final label = dept.isNotEmpty ? '$name ($id) • $dept' : '$name ($id)';
+                  return DropdownMenuItem<String?>(
+                    value: id,
+                    child: Text(
+                      label,
+                      style: GoogleFonts.inter(fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  );
+                }),
+              ],
               onChanged: (v) {
-                if (v != null) setState(() => _selectedEmployee = v);
+                setState(() {
+                  _selectedEmployeeId = v;
+                  if (v != null) {
+                    _selectedEmployeeMap = _liveEmployees.firstWhere(
+                      (e) => e['id']?.toString() == v,
+                      orElse: () => {},
+                    );
+                  } else {
+                    _selectedEmployeeMap = null;
+                  }
+                });
               },
             ),
           ),
@@ -1863,7 +2213,7 @@ class _PayslipScreenState extends State<PayslipScreen> {
     );
   }
 
-  Widget _buildFilterDropdown(String label) {
+  Widget _buildMonthFilterDropdown() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
@@ -1873,11 +2223,45 @@ class _PayslipScreenState extends State<PayslipScreen> {
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
-          value: label,
+          value: _filterMonth,
           isExpanded: true,
           icon: const Icon(Icons.keyboard_arrow_down_rounded),
-          items: [DropdownMenuItem(value: label, child: Text(label, style: GoogleFonts.inter(fontSize: 12)))],
-          onChanged: (_) {},
+          items: ['All Months', ..._monthList]
+              .map((m) => DropdownMenuItem(
+                    value: m,
+                    child: Text(m, style: GoogleFonts.inter(fontSize: 12), overflow: TextOverflow.ellipsis),
+                  ))
+              .toList(),
+          onChanged: (v) {
+            if (v != null) setState(() => _filterMonth = v);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildYearFilterDropdown() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _filterYear,
+          isExpanded: true,
+          icon: const Icon(Icons.keyboard_arrow_down_rounded),
+          items: ['All Years', '2026', '2025', '2024']
+              .map((y) => DropdownMenuItem(
+                    value: y,
+                    child: Text(y, style: GoogleFonts.inter(fontSize: 12)),
+                  ))
+              .toList(),
+          onChanged: (v) {
+            if (v != null) setState(() => _filterYear = v);
+          },
         ),
       ),
     );

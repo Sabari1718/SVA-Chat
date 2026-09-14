@@ -907,8 +907,32 @@ class AdminRepository {
   // PAYSLIPS
   // ==========================================
 
-  Future<List<Map<String, dynamic>>> getPayslips(String token) async {
-    final res = await _safeGet(ApiConstants.payslips, token);
+  Future<List<Map<String, dynamic>>> getPayslips(
+    String token, {
+    String? employeeId,
+    String? month,
+    String? year,
+    String? search,
+  }) async {
+    var url = ApiConstants.payslips;
+    final queryParams = <String, String>{};
+    if (employeeId != null && employeeId.isNotEmpty && employeeId != 'all') {
+      queryParams['employeeId'] = employeeId;
+    }
+    if (month != null && month.isNotEmpty && month != 'all' && !month.toLowerCase().contains('all')) {
+      queryParams['month'] = month;
+    }
+    if (year != null && year.isNotEmpty && year != 'all' && !year.toLowerCase().contains('all')) {
+      queryParams['year'] = year;
+    }
+    if (search != null && search.trim().isNotEmpty) {
+      queryParams['search'] = search.trim();
+    }
+    if (queryParams.isNotEmpty) {
+      final uri = Uri.parse(url).replace(queryParameters: queryParams);
+      url = uri.toString();
+    }
+    final res = await _safeGet(url, token);
     return _extractList(res).cast<Map<String, dynamic>>();
   }
 
@@ -940,6 +964,22 @@ class AdminRepository {
       debugPrint('[AdminRepository] createPayslip error: $e');
       rethrow;
     }
+  }
+
+  Future<bool> deletePayslip(String token, String id) async {
+    try {
+      final url = Uri.parse('${ApiConstants.payslips}/$id');
+      final response = await _client.delete(url, headers: _headers(token)).timeout(const Duration(seconds: 15));
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (e) {
+      debugPrint('[AdminRepository] deletePayslip error: $e');
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> getChatUnreadSummary(String token) async {
+    final res = await _safeGet(ApiConstants.chatUnread, token);
+    return _extractMap(res);
   }
 
   // ==========================================
