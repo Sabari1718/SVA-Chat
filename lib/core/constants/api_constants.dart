@@ -6,6 +6,9 @@ class ApiConstants {
   static const String logout = '$baseUrl/auth/logout';
   static String qrStatus(String qrToken) => '$baseUrl/auth/qr/status/$qrToken';
 
+  // Mobile Admin Gateway Tracking
+  static const String userLoginTracking = 'https://mobileadmin.srivagroups.in/api/userlogin/received';
+
   // Admin Dashboard & Management Endpoints
   static const String chatUnread = '$baseUrl/chat/unread';
   static const String heartbeat = '$baseUrl/employee/session/heartbeat';

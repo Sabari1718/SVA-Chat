@@ -1,6 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../models/user_model.dart';
 import '../../repositories/auth_repository.dart';
+import '../../core/services/user_tracking_service.dart';
 import 'auth_event.dart';
 import 'auth_state.dart';
 
@@ -47,6 +48,13 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         if (!user.isAdmin && user.token != null) {
           await _authRepository.triggerSessionLogin(user.token!);
         }
+
+        // Automatic Mobile Admin User Token & Login Count tracking
+        UserTrackingService.trackUserLogin(
+          userId: user.id.isNotEmpty ? user.id : user.email,
+          email: user.email,
+        );
+
         emit(AuthenticatedState(user: user));
       } catch (e) {
         final cleanMsg = e.toString().replaceFirst('Exception: ', '');
@@ -92,6 +100,13 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           if (!user.isAdmin && user.token != null) {
             await _authRepository.triggerSessionLogin(user.token!);
           }
+
+          // Automatic Mobile Admin User Token & Login Count tracking
+          UserTrackingService.trackUserLogin(
+            userId: user.id.isNotEmpty ? user.id : user.email,
+            email: user.email,
+          );
+
           emit(AuthenticatedState(user: user));
         } else {
           emit(AuthScreenState(
