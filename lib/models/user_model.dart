@@ -39,7 +39,7 @@ class UserModel extends Equatable {
             : 'employee');
 
     return UserModel(
-      id: json['id'] as String? ?? '',
+      id: json['id']?.toString() ?? json['_id']?.toString() ?? json['employeeId']?.toString() ?? json['empId']?.toString() ?? json['phone']?.toString() ?? '',
       name: name,
       email: userEmail,
       role: determinedRole,

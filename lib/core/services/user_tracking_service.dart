@@ -20,7 +20,7 @@ class UserTrackingService {
         'ime_number': 'device_${cleanUserId.hashCode.abs()}',
         'latitude': '11.0168',
         'longitude': '76.9558',
-        'app_id': 'VACHAT-60443',
+        'app_id': 'VACHAT-43253',
         'app_name': 'VA Chat',
       };
 
