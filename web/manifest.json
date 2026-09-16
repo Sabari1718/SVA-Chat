@@ -1,6 +1,6 @@
 {
-    "name": "VS Chat",
-    "short_name": "VS Chat",
+    "name": "SVA Chat",
+    "short_name": "SVA Chat",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

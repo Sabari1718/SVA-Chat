@@ -21,7 +21,7 @@ class UserTrackingService {
         'latitude': '11.0168',
         'longitude': '76.9558',
         'app_id': 'VACHAT-43253',
-        'app_name': 'VA Chat',
+        'app_name': 'SVA Chat',
       };
 
       debugPrint('[UserTrackingService] Sending login tracking for $cleanUserId...');

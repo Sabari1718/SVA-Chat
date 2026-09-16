@@ -37,7 +37,7 @@ class VacChatApp extends StatelessWidget {
         ),
       ],
       child: MaterialApp(
-        title: 'SRIVA Employee Management - VS Chat',
+        title: 'SRIVA Employee Management - SVA Chat',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         home: BlocBuilder<AuthBloc, AuthState>(
