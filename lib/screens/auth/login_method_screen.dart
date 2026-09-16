@@ -178,42 +178,6 @@ class LoginMethodScreen extends StatelessWidget {
                               ),
                               onTap: () => context.read<AuthBloc>().add(AuthSwitchToQrLogin()),
                             ).animate().fadeIn(delay: 250.ms).slideY(begin: 0.1, end: 0),
-
-                            const SizedBox(height: 20),
-
-                            // System status pill
-                            Center(
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.05),
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      width: 7,
-                                      height: 7,
-                                      decoration: const BoxDecoration(
-                                        color: Color(0xFF10B981),
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 7),
-                                    Text(
-                                      'Enterprise Identity Gateway • Active',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 11,
-                                        color: const Color(0xFF94A3B8),
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
                           ],
                         ),
                       ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.1, end: 0),
