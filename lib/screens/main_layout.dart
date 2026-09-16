@@ -623,10 +623,25 @@ class _MainLayoutState extends State<MainLayout> {
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(12),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.2),
+                          blurRadius: 8,
+                        ),
+                      ],
                     ),
-                    child: Icon(isAdmin ? Icons.admin_panel_settings_rounded : Icons.domain_rounded, color: Colors.white, size: 24),
+                    child: ClipOval(
+                      child: isAdmin
+                          ? Container(
+                              color: Colors.white.withValues(alpha: 0.15),
+                              child: const Icon(Icons.admin_panel_settings_rounded, color: Colors.white, size: 24),
+                            )
+                          : Image.asset(
+                              'assets/images/app_logo.png',
+                              fit: BoxFit.cover,
+                            ),
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(

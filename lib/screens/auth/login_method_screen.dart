@@ -60,25 +60,25 @@ class LoginMethodScreen extends StatelessWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Floating Brand Emblem
+                      // Floating Brand Emblem / App Logo
                       Container(
-                        padding: const EdgeInsets.all(16),
+                        width: 84,
+                        height: 84,
                         decoration: BoxDecoration(
-                          gradient: AppColors.heroGradient,
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1.5),
+                          shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF4F46E5).withValues(alpha: 0.3),
-                              blurRadius: 24,
-                              offset: const Offset(0, 8),
+                              color: const Color(0xFF10B981).withValues(alpha: 0.35),
+                              blurRadius: 28,
+                              offset: const Offset(0, 10),
                             ),
                           ],
                         ),
-                        child: const Icon(
-                          Icons.domain_rounded,
-                          color: Colors.white,
-                          size: 38,
+                        child: ClipOval(
+                          child: Image.asset(
+                            'assets/images/app_logo.png',
+                            fit: BoxFit.cover,
+                          ),
                         ),
                       ).animate().scale(duration: 400.ms, curve: Curves.easeOutBack),
                       const SizedBox(height: 18),
